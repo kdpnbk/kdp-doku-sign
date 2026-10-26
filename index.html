@@ -1597,29 +1597,43 @@ function autoCleanupExpiredDocuments() {
             if (password !== confirmPass) { alert('Sandi dan Konfirmasi Sandi tidak cocok!'); return; }
             if (usersDatabase[username]) { alert('Username sudah terdaftar!'); return; }
 
-            const parafFile = document.getElementById('reg-paraf-file').files[0];
-            const ttdFile = document.getElementById('reg-ttd-file').files[0];
+            // 1. Ambil file dari input
+const paraffile = document.getElementById('reg-paraf-file').files[0];
+const ttdFile = document.getElementById('reg-ttd-file').files[0];
 
-            const parafPng = await readFileAsBase64(parafFile);
-            const ttdPng = await readFileAsBase64(ttdFile);
+// 2. Konversi ke Base64
+const parafPng = await readFileAsBase64(paraffile);
+const ttdPng = await readFileAsBase64(ttdFile);
 
-            usersDatabase[username] = {
-                fullname, username, password, position,
-                roleTitle: roleTitlesMap[position],
-                inkColor, init: fullname.split(' ').map(n=>n[0]).join('').toUpperCase().substring(0,2),
-                avatarPng: null, parafPng, ttdPng
-            };
+// 3. Simpan langsung secara permanen ke Firebase Firestore
+await db.collection('users').doc(username.trim().toLowerCase()).set({
+    fullname: fullname,
+    username: username,
+    password: password,
+    position: position,
+    roleTitle: roleTitlesMap[position],
+    inkColor: inkColor,
+    init: fullname.split(' ').map(n => n[0]).join('').toUpperCase().substring(0, 2),
+    avatarPng: null,
+    parafPng: parafPng,
+    ttdPng: ttdPng,
+    createdAt: firebase.firestore.FieldValue.serverTimestamp()
+});
 
-            currentUser = usersDatabase[username];
-            await saveStateToCloud();
-            recordLog(`Mendaftarkan akun baru: ${fullname} (${roleTitlesMap[position]})`);
+// 4. Perbarui status lokal dan UI
+currentUser = {
+    fullname, username, password, position,
+    roleTitle: roleTitlesMap[position],
+    inkColor, parafPng, ttdPng
+};
 
-            document.getElementById('auth-screen').classList.add('hidden');
-            document.getElementById('app-dashboard').classList.remove('hidden');
-            updateUIUserDisplay(); 
-            updateStatistics();
-            switchMenu('ringkasan');
-            showToast('Pendaftaran berhasil! Akun tersimpan.');
+recordLog(`Mendaftarkan akun baru: ${fullname} (${roleTitlesMap[position]})`);
+document.getElementById('auth-screen').classList.add('hidden');
+document.getElementById('app-dashboard').classList.remove('hidden');
+updateUserDisplay();
+updateStatistics();
+switchMenu('ringkasan');
+showToast('Pendaftaran berhasil! Akun tersimpan di Firestore.');
         }
 
        async function handleLogin() {
@@ -2313,55 +2327,59 @@ function sendUserMessage() {
     messageContainer.scrollTop = messageContainer.scrollHeight;
 }
         async function uploadSpecificAsset(type) {
-            if (!currentUser) return;
+    if (!currentUser) return;
 
-            if (type === 'avatar') {
+    if (type === 'avatar') {
+        // 1. Ambil input file khusus avatar dengan benar
         const fileInput = document.getElementById('profile-avatar-file');
-      if (!fileInput || fileInput.files.length === 0) { 
-            alert('Pilih file foto profil terlebih dahulu!'); 
-            return;  
+        if (!fileInput || fileInput.files.length === 0) {
+            alert('Pilih file foto profil terlebih dahulu!');
+            return;
         }
+        
         const file = fileInput.files[0];
         const fileExt = file.name.split('.').pop();
         const fileName = `${currentUser.username}_${Date.now()}.${fileExt}`;
         const filePath = `${fileName}`;
 
-        // Upload file asli ke Supabase Storage (Bucket: avatars)
+        // 2. Upload file asli ke Supabase Storage (Bucket: avatars)
         const { data, error } = await supabase.storage
             .from('avatars')
             .upload(filePath, file);
 
         if (error) throw error;
 
-        // Ambil Public URL dari file yang di-upload
+        // 3. Ambil Public URL dari file yang di-upload
         const { data: publicURLData } = supabase.storage
             .from('avatars')
             .getPublicUrl(filePath);
 
         currentUser.avatarPng = publicURLData.publicUrl;
         showToast('Foto profil berhasil diunggah ke Supabase!');
-                } else if (type === 'ink') {
-                const colorVal = document.getElementById('profile-edit-ink-color').value;
-                currentUser.inkColor = colorVal;
-                showToast('Warna tinta berhasil diperbarui!');
-            } else if (type === 'paraf') {
-                const file = document.getElementById('profile-paraf-file').files[0];
-                if (!file) { alert('Pilih file gambar paraf terlebih dahulu!'); return; }
-                currentUser.parafPng = await readFileAsBase64(file);
-                showToast('Aset Paraf berhasil diganti!');
-            } else if (type === 'ttd') {
-                const file = document.getElementById('profile-ttd-file').files[0];
-                if (!file) { alert('Pilih file gambar TTD terlebih dahulu!'); return; }
-                currentUser.ttdPng = await readFileAsBase64(file);
-                showToast('Aset TTD berhasil diganti!');
-            }
 
-            usersDatabase[currentUser.username] = currentUser;
-            await saveStateToCloud();
-            recordLog(`Memperbarui aset profil (${type})`);
-            updateUIUserDisplay();
-            renderProfileForm();
-        }
+    } else if (type === 'ink') {
+        const colorVal = document.getElementById('profile-edit-ink-color').value;
+        currentUser.inkColor = colorVal;
+        showToast('Warna tinta berhasil diperbarui!');
+    } else if (type === 'paraf') {
+        const file = document.getElementById('profile-paraf-file').files[0];
+        if (!file) { alert('Pilih file gambar paraf terlebih dahulu!'); return; }
+        currentUser.parafPng = await readFileAsBase64(file);
+        showToast('Aset Paraf berhasil diganti!');
+    } else if (type === 'ttd') {
+        const file = document.getElementById('profile-td-file') || document.getElementById('profile-ttd-file').files[0];
+        if (!file) { alert('Pilih file gambar TTD terlebih dahulu!'); return; }
+        currentUser.ttdPng = await readFileAsBase64(file);
+        showToast('Aset TTD berhasil diganti!');
+    }
+
+    // Simpan perubahan ke database & cloud
+    usersDatabase[currentUser.username] = currentUser;
+    await saveStateToCloud();
+    recordLog(`Memperbarui aset profil (${type})`);
+    updateUIUserDisplay();
+    renderProfileForm();
+}
 
         async function saveNewPassword() {
             if (!currentUser) return;
