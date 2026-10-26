@@ -2205,61 +2205,65 @@ function handleAIChatKeyPress(event) {
     }
 }
 
-async function kirimPesanKeAI() {
-    // 1. Ambil elemen input tempat user mengetik pesan
-    const inputElement = document.getElementById('user-input') || document.querySelector('input[type="text"]');
-    
-    if (!inputElement) {
-        console.error("Elemen input chat tidak ditemukan!");
-        return;
-    }
+// Fungsi Utama Mengirim Pesan & Mendapatkan Respons AI
+  window.sendMessagetoAI = async function() {
+      const chatInput = document.getElementById('ai-chat-input');
+      const chatContainer = document.getElementById('ai-chat-messages');
+      if (!chatInput || !chatContainer) return;
 
-    const pesanUser = inputElement.value.trim();
+      const text = chatInput.value.trim();
+      if (!text) return;
 
-    // 2. Cegah pengiriman jika pesan kosong
-    if (!pesanUser) {
-        return;
-    }
+      // 1. Tampilkan pesan user di layar
+      const userMsgEl = document.createElement('div');
+      userMsgEl.className = 'bg-amber-600/30 p-2 rounded-lg max-w-[85%] self-end text-white';
+      userMsgEl.innerText = text;
+      chatContainer.appendChild(userMsgEl);
+      chatInput.value = "";
+      chatContainer.scrollTop = chatContainer.scrollHeight;
 
-    // Tampilkan pesan pengguna ke UI chat terlebih dahulu
-    tampilkanPesanKeUI("User", pesanUser);
+      // 2. Tampilkan indikator "Sedang mengetik..."
+      const typingEl = document.createElement('div');
+      typingEl.id = 'ai-typing-indicator';
+      typingEl.className = 'bg-zinc-800 p-2 rounded-lg max-w-[85%] text-sub italic';
+      typingEl.innerText = 'Asisten AI sedang mengetik...';
+      chatContainer.appendChild(typingEl);
+      chatContainer.scrollTop = chatContainer.scrollHeight;
 
-    // Kosongkan kolom input setelah diambil
-    inputElement.value = '';
+      let aiReplyText = "Maaf, terjadi kesalahan.";
+      try {
+          // ==========================================
+          // PERBAIKAN: Gunakan fetch ke /api/chat (bukan localhost)
+          // ==========================================
+          const response = await fetch('/api/chat', {
+              method: 'POST',
+              headers: {
+                  'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({ message: text })
+          });
 
-    // Tampilkan status loading / mengetik
-    const loadingId = tampilkanPesanKeUI("Asisten AI", "Sedang mengetik...", true);
+          const data = await response.json();
+          if (response.ok && data.reply) {
+              aiReplyText = data.reply;
+          } else {
+              aiReplyText = data.error || "Fungsi AI belum terhubung dengan benar.";
+          }
+      } catch (err) {
+          aiReplyText = "Gagal memuat respons AI karena gangguan koneksi.";
+      }
 
-    try {
-        // 3. Kirim permintaan fetch ke backend Vercel (/api/chat)
-        const response = await fetch('/api/chat', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            // PENTING: Menggunakan 'message' agar terbaca dengan benar oleh server.js
-            body: JSON.stringify({ message: pesanUser })
-        });
+      // Hapus indikator mengetik
+      const indicator = document.getElementById('ai-typing-indicator');
+      if (indicator) indicator.remove();
 
-        const data = await response.json();
-        
-        // Hapus pesan loading
-        hapusPesanUI(loadingId);
-
-        if (response.ok && data.reply) {
-            // 4. Jika berhasil, tampilkan balasan AI ke layar chat
-            tampilkanBalasanAI(data.reply);
-        } else {
-            // Jika server mengembalikan error
-            tampilkanBalasanAI("Maaf, terjadi kesalahan dari server AI: " + (data.error || "Gagal memproses pesan."));
-        }
-    } catch (error) {
-        // Tangani jika koneksi gagal total
-        console.error("Gagal terhubung ke server:", error);
-        hapusPesanUI(loadingId);
-        tampilkanBalasanAI("Maaf, asisten AI sedang mengalami gangguan koneksi internet/server.");
-    }
-}
+      // 4. Tampilkan balasan AI di layar
+      const aiMsgEl = document.createElement('div');
+      aiMsgEl.className = 'bg-zinc-800 p-2 rounded-lg max-w-[85%] text-white';
+      aiMsgEl.innerText = aiReplyText;
+      chatContainer.appendChild(aiMsgEl);
+      chatContainer.scrollTop = chatContainer.scrollHeight;
+  };
 
 // Fungsi bantu untuk merender pesan ke dalam kotak chat UI Anda
 function tampilkanBalasanAI(teksBalasan) {
