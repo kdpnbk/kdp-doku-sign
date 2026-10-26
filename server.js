@@ -1,61 +1,31 @@
 const express = require('express');
 const path = require('path');
-const Groq = require('groq-sdk');
-
 const app = express();
+const PORT = process.env.PORT || 3000;
 
-// Middleware untuk memparsing JSON
+// Middleware untuk memparsing JSON dan file statis
 app.use(express.json());
-
-// Menyajikan file statis frontend (HTML, CSS, JS, gambar) dari folder utama
 app.use(express.static(path.join(__dirname)));
 
-// Rute utama untuk melayani index.html
+// Rute utama untuk melayani file index.html
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
 });
 
-// Inisialisasi Groq SDK menggunakan Environment Variable
-const groq = new Groq({
-    apiKey: process.env.GROQ_API_KEY
-});
-
-// Endpoint untuk fitur Chat AI Groq
-app.post('/api/chat', async (req, res) => {
+// (Opsional) Endpoint untuk mengambil daftar user jika Anda menggunakannya 
+// untuk fitur Chat Antar User dinamis ke database Anda.
+app.get('/api/users', async (req, res) => {
     try {
-        const { message } = req.body;
-
-        if (!message) {
-            return res.status(400).json({ error: 'Pesan tidak boleh kosong.' });
-        }
-
-        // Pemanggilan Groq API dengan struktur objek & model yang valid
-        const chatCompletion = await groq.chat.completions.create({
-         messages: [
-             {
-                 role: "user",
-                 content: message,
-             }
-         ],
-         model: "llama-3.1-8b-instant",
-     });
-
-        const aiResponse = chatCompletion.choices[0]?.message?.content || "Tidak ada respons dari AI.";
-
-        return res.json({ reply: aiResponse });
-
+        // Sesuaikan dengan logika database Anda (Firestore / Supabase / dll)
+        // Contoh data dummy/placeholder jika diperlukan:
+        const users = []; 
+        res.json(users);
     } catch (error) {
-        console.error("Error pada server:", error);
-        return res.status(500).json({ 
-            error: error.message || 'Terjadi kesalahan pada server backend.' 
-        });
+        res.status(500).json({ error: "Gagal memuat daftar user" });
     }
 });
 
-// Menjalankan server lokal (opsional untuk testing lokal)
-const PORT = process.env.PORT || 3000;
+// Menjalankan server lokal
 app.listen(PORT, () => {
-    console.log(`Server berjalan di port ${PORT}`);
+    console.log(`Server KDP Doku Sign berjalan di port ${PORT}`);
 });
-
-module.exports = app;
