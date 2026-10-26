@@ -2207,7 +2207,6 @@ function handleAIChatKeyPress(event) {
 
 async function kirimPesanKeAI() {
     // 1. Ambil elemen input tempat user mengetik pesan
-    // (Pastikan ID elemen input di HTML Anda sesuai, atau sesuaikan selector-nya jika berbeda)
     const inputElement = document.getElementById('user-input') || document.querySelector('input[type="text"]');
     
     if (!inputElement) {
@@ -2219,15 +2218,17 @@ async function kirimPesanKeAI() {
 
     // 2. Cegah pengiriman jika pesan kosong
     if (!pesanUser) {
-        console.warn("Pesan kosong, tidak dikirim.");
         return;
     }
 
-    // (Opsional) Tampilkan pesan user ke layar chat terlebih dahulu
-    // tumpukKeUI("User", pesanUser); 
+    // Tampilkan pesan pengguna ke UI chat terlebih dahulu
+    tampilkanPesanKeUI("User", pesanUser);
 
     // Kosongkan kolom input setelah diambil
     inputElement.value = '';
+
+    // Tampilkan status loading / mengetik
+    const loadingId = tampilkanPesanKeUI("Asisten AI", "Sedang mengetik...", true);
 
     try {
         // 3. Kirim permintaan fetch ke backend Vercel (/api/chat)
@@ -2242,27 +2243,60 @@ async function kirimPesanKeAI() {
 
         const data = await response.json();
         
-        if (response.ok) {
+        // Hapus pesan loading
+        hapusPesanUI(loadingId);
+
+        if (response.ok && data.reply) {
             // 4. Jika berhasil, tampilkan balasan AI ke layar chat
-            // (Sesuaikan fungsi 'tampilkanBalasanAI' dengan fungsi render chat di kode Anda)
-            if (typeof tampilkanBalasanAI === 'function') {
-                tampilkanBalasanAI(data.reply);
-            } else {
-                console.log("Balasan AI:", data.reply);
-            }
+            tampilkanBalasanAI(data.reply);
         } else {
-            // Jika ada pesan error dari server
-            console.error("Error dari server:", data.error);
-            if (typeof tampilkanBalasanAI === 'function') {
-                tampilkanBalasanAI("Maaf, terjadi kesalahan: " + (data.error || "Gagal memproses pesan."));
-            }
+            // Jika server mengembalikan error
+            tampilkanBalasanAI("Maaf, terjadi kesalahan dari server AI: " + (data.error || "Gagal memproses pesan."));
         }
     } catch (error) {
         // Tangani jika koneksi gagal total
         console.error("Gagal terhubung ke server:", error);
-        if (typeof tampilkanBalasanAI === 'function') {
-            tampilkanBalasanAI("Maaf, asisten AI sedang mengalami gangguan koneksi internet/server.");
-        }
+        hapusPesanUI(loadingId);
+        tampilkanBalasanAI("Maaf, asisten AI sedang mengalami gangguan koneksi internet/server.");
+    }
+}
+
+// Fungsi bantu untuk merender pesan ke dalam kotak chat UI Anda
+function tampilkanBalasanAI(teksBalasan) {
+    tampilkanPesanKeUI("Asisten AI", teksBalasan);
+}
+
+// Fungsi dasar untuk memasukkan elemen teks ke dalam kontainer chat Anda
+function tampilkanPesanKeUI(pengirim, pesan, isLoading = false) {
+    const chatContainer = document.querySelector('.chat-messages, #chat-messages, .chat-box-content') || document.getElementById('chat-container');
+    
+    if (!chatContainer) {
+        console.log(pengirim + ": " + pesan);
+        return null;
+    }
+
+    const messageDiv = document.createElement('div');
+    const messageId = 'msg-' + Date.now();
+    messageDiv.id = messageId;
+    messageDiv.className = `message ${pengirim === 'User' ? 'user-message' : 'ai-message'}`;
+    messageDiv.style.margin = "8px 0";
+    messageDiv.style.padding = "8px 12px";
+    messageDiv.style.borderRadius = "8px";
+    messageDiv.style.background = pengirim === 'User' ? "#333" : "#444";
+    messageDiv.style.color = "#fff";
+    
+    messageDiv.innerHTML = `<strong>${pengirim}:</strong> <span class="text-content">${pesan}</span>`;
+    chatContainer.appendChild(messageDiv);
+    chatContainer.scrollTop = chatContainer.scrollHeight;
+
+    return messageId;
+}
+
+function hapusPesanUI(messageId) {
+    if (!messageId) return;
+    const element = document.getElementById(messageId);
+    if (element) {
+        element.remove();
     }
 }
 // 1. Fungsi untuk mengirim pesan AI saat tombol Enter ditekan
