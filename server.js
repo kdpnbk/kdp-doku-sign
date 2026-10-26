@@ -4,23 +4,23 @@ const Groq = require('groq-sdk');
 
 const app = express();
 
-// Middleware untuk memparsing JSON dari request body
+// Middleware untuk memparsing JSON
 app.use(express.json());
 
-// 1. Menyajikan file statis (HTML, gambar, script) dari folder utama
+// Menyajikan file statis frontend (HTML, CSS, JS, gambar) dari folder utama
 app.use(express.static(path.join(__dirname)));
 
-// 2. Rute utama ( / ) untuk menampilkan index.html
+// Rute utama untuk melayani index.html
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
 });
 
-// Inisialisasi klien Groq menggunakan Environment Variable (GROQ_API_KEY)
+// Inisialisasi Groq SDK menggunakan Environment Variable
 const groq = new Groq({
     apiKey: process.env.GROQ_API_KEY
 });
 
-// 3. Endpoint Backend untuk Chat AI Groq
+// Endpoint untuk fitur Chat AI Groq
 app.post('/api/chat', async (req, res) => {
     try {
         const { message } = req.body;
@@ -29,7 +29,6 @@ app.post('/api/chat', async (req, res) => {
             return res.status(400).json({ error: 'Pesan tidak boleh kosong.' });
         }
 
-        // Panggilan ke API Groq
         const chatCompletion = await groq.chat.completions.create({
             messages: [
                 {
@@ -37,7 +36,7 @@ app.post('/api/chat', async (req, res) => {
                     content: message,
                 },
             ],
-            model: "llama-3.3-70b-versatile", // Anda dapat menyesuaikan model Groq yang digunakan
+            model: "llama-3.3-70b-versatile",
         });
 
         const aiResponse = chatCompletion.choices[0]?.message?.content || "Tidak ada respons dari AI.";
@@ -49,10 +48,10 @@ app.post('/api/chat', async (req, res) => {
     }
 });
 
-// Ekspor modul app untuk Vercel Serverless Function
+// Ekspor untuk Vercel Serverless
 module.exports = app;
 
-// Jalankan server lokal jika dijalankan secara manual (node server.js)
+// Jalankan lokal jika diperlukan
 if (require.main === module) {
     const PORT = process.env.PORT || 3000;
     app.listen(PORT, () => {
