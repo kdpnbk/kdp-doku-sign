@@ -4057,16 +4057,25 @@ document.addEventListener('DOMContentLoaded', () => {
       chatContainer.appendChild(typingEl);
       chatContainer.scrollTop = chatContainer.scrollHeight;
 
-      // 3. Panggil fungsi API Gemini yang sudah ada di atas
+      // 3. Panggil backend serverless Vercel (/api/chat)
       let aiReplyText = "Maaf, terjadi kesalahan.";
       try {
-          if (typeof callGeminiAPI === 'function') {
-              aiReplyText = await callGeminiAPI("Kamu adalah Asisten AI untuk aplikasi KDP Doku Sign (Sistem Otorisasi Dokumen). Jawablah dengan ringkas dan jelas dalam bahasa Indonesia.", text);
+          const response = await fetch('/api/chat', {
+              method: 'POST',
+              headers: {
+                  'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({ message: text })
+          });
+
+          const data = await response.json();
+          if (response.ok && data.reply) {
+              aiReplyText = data.reply;
           } else {
-              aiReplyText = "Fungsi AI belum terhubung dengan benar.";
+              aiReplyText = data.error || "Fungsi AI belum terhubung dengan benar.";
           }
       } catch (err) {
-          aiReplyText = "Gagal memuat respons AI.";
+          aiReplyText = "Gagal memuat respons AI karena gangguan koneksi.";
       }
 
       // Hapus indikator mengetik
