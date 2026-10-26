@@ -2205,39 +2205,65 @@ function handleAIChatKeyPress(event) {
     }
 }
 
-// Contoh fungsi kirim pesan di index.html
 async function kirimPesanKeAI() {
-    const inputField = document.getElementById('user-input'); // Sesuaikan dengan id input chat Anda
-    const pesanUser = inputField.value.trim();
-
-    if (!pesanUser) return;
-
-    // Tampilkan pesan user ke layar chat terlebih dahulu...
+    // 1. Ambil elemen input tempat user mengetik pesan
+    // (Pastikan ID elemen input di HTML Anda sesuai, atau sesuaikan selector-nya jika berbeda)
+    const inputElement = document.getElementById('user-input') || document.querySelector('input[type="text"]');
     
+    if (!inputElement) {
+        console.error("Elemen input chat tidak ditemukan!");
+        return;
+    }
+
+    const pesanUser = inputElement.value.trim();
+
+    // 2. Cegah pengiriman jika pesan kosong
+    if (!pesanUser) {
+        console.warn("Pesan kosong, tidak dikirim.");
+        return;
+    }
+
+    // (Opsional) Tampilkan pesan user ke layar chat terlebih dahulu
+    // tumpukKeUI("User", pesanUser); 
+
+    // Kosongkan kolom input setelah diambil
+    inputElement.value = '';
+
     try {
+        // 3. Kirim permintaan fetch ke backend Vercel (/api/chat)
         const response = await fetch('/api/chat', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
             },
-            // PENTING: Gunakan 'message' agar sesuai dengan server.js
+            // PENTING: Menggunakan 'message' agar terbaca dengan benar oleh server.js
             body: JSON.stringify({ message: pesanUser })
         });
 
         const data = await response.json();
         
         if (response.ok) {
-            // Tampilkan balasan AI (data.reply) ke layar chat
-            tampilkanBalasanAI(data.reply);
+            // 4. Jika berhasil, tampilkan balasan AI ke layar chat
+            // (Sesuaikan fungsi 'tampilkanBalasanAI' dengan fungsi render chat di kode Anda)
+            if (typeof tampilkanBalasanAI === 'function') {
+                tampilkanBalasanAI(data.reply);
+            } else {
+                console.log("Balasan AI:", data.reply);
+            }
         } else {
-            tampilkanBalasanAI("Maaf, terjadi kesalahan dari server AI: " + data.error);
+            // Jika ada pesan error dari server
+            console.error("Error dari server:", data.error);
+            if (typeof tampilkanBalasanAI === 'function') {
+                tampilkanBalasanAI("Maaf, terjadi kesalahan: " + (data.error || "Gagal memproses pesan."));
+            }
         }
     } catch (error) {
-        console.error("Gagal terhubung:", error);
-        tampilkanBalasanAI("Maaf, asisten AI sedang mengalami gangguan koneksi.");
+        // Tangani jika koneksi gagal total
+        console.error("Gagal terhubung ke server:", error);
+        if (typeof tampilkanBalasanAI === 'function') {
+            tampilkanBalasanAI("Maaf, asisten AI sedang mengalami gangguan koneksi internet/server.");
+        }
     }
-    
-    inputField.value = '';
 }
 // 1. Fungsi untuk mengirim pesan AI saat tombol Enter ditekan
 function handleAIChatKeyPress(event) {
