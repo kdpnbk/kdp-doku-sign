@@ -3831,25 +3831,11 @@ document.addEventListener('DOMContentLoaded', () => {
             </div>
             <!-- Pilihan Tab Navigation -->
             <div style="display: flex; background: #222;">
-                <button type="button" id="tab-btn-ai" onclick="switchChatTab('ai')" style="flex: 1; padding: 8px; background: #1e1e1e; color: #f39c12; border: none; border-bottom: 2px solid #f39c12; cursor: pointer; font-size: 11px; font-weight: bold;">🤖 Asisten AI</button>
-                <button type="button" id="tab-btn-user" onclick="switchChatTab('user')" style="flex: 1; padding: 8px; background: #222; color: #888; border: none; border-bottom: 2px solid transparent; cursor: pointer; font-size: 11px; font-weight: bold;">👥 Chat Antar User</button>
+                 <button type="button" id="tab-btn-user" onclick="switchChatTab('user')" style="flex: 1; padding: 8px; background: #222; color: #888; border: none; border-bottom: 2px solid transparent; cursor: pointer; font-size: 11px; font-weight: bold;">👥 Chat Antar User</button>
             </div>
         </div>
         
-        <!-- CONTENT 1: Panel Chat Asisten AI -->
-        <div id="panel-chat-ai" style="display: flex; flex-direction: column; flex: 1; overflow: hidden;">
-            <div id="ai-chat-messages" style="flex: 1; padding: 10px; overflow-y: auto; font-size: 12px; color: #ddd; display: flex; flex-direction: column; gap: 8px;">
-                <div style="background: #333; padding: 8px; border-radius: 8px; max-width: 85%;">
-                    Halo! Saya Asisten AI KDP Doku Sign. Ada yang bisa saya bantu terkait operasional aplikasi?
-                </div>
-            </div>
-            <div style="padding: 10px; background: #2c2c2c; display: flex; gap: 5px;">
-                <input type="text" id="ai-chat-input" placeholder="Tulis pertanyaan..." style="flex: 1; padding: 8px; border-radius: 6px; border: 1px solid #444; background: #111; color: #fff; font-size: 12px;" onkeypress="handleAIChatKeyPress(event)">
-                <button type="button" onclick="sendMessagetoAI()" style="background: #f39c12; border: none; color: #fff; padding: 8px 12px; border-radius: 6px; cursor: pointer; font-weight: bold;">Kirim</button>
-            </div>
-        </div>
-
-        <!-- CONTENT 2: Panel Chat Antar User -->
+            <!-- CONTENT 2: Panel Chat Antar User -->
         <div id="panel-chat-user" style="display: none; flex-direction: column; flex: 1; overflow: hidden;">
             <div style="padding: 8px; background: #252525; border-bottom: 1px solid #333; display: flex; align-items: center; gap: 6px;">
                 <label style="font-size: 11px; color: #aaa;">Kirim ke:</label>
