@@ -2205,32 +2205,39 @@ function handleAIChatKeyPress(event) {
     }
 }
 
-async function callGeminiAPI(systemInstruction, prompt) {
+// Contoh fungsi kirim pesan di index.html
+async function kirimPesanKeAI() {
+    const inputField = document.getElementById('user-input'); // Sesuaikan dengan id input chat Anda
+    const pesanUser = inputField.value.trim();
+
+    if (!pesanUser) return;
+
+    // Tampilkan pesan user ke layar chat terlebih dahulu...
+    
     try {
-        // Pastikan mengarah ke server proxy lokal Anda
         const response = await fetch('/api/chat', {
-            method: "POST",
-            headers: { 
-                "Content-Type": "application/json"
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ systemInstruction, prompt })
+            // PENTING: Gunakan 'message' agar sesuai dengan server.js
+            body: JSON.stringify({ message: pesanUser })
         });
 
         const data = await response.json();
         
-        // Menangkap respons dari server proxy
-        if (data.candidates && data.candidates[0].content && data.candidates[0].content.parts) {
-            return data.candidates[0].content.parts[0].text;
-        } else if (data.error) {
-            console.error("API Error:", data.error);
-            return "Maaf, terjadi kesalahan dari server AI: " + (data.error.message || JSON.stringify(data.error));
+        if (response.ok) {
+            // Tampilkan balasan AI (data.reply) ke layar chat
+            tampilkanBalasanAI(data.reply);
         } else {
-            return "Maaf, format respons dari server AI tidak dikenali.";
+            tampilkanBalasanAI("Maaf, terjadi kesalahan dari server AI: " + data.error);
         }
     } catch (error) {
-        console.error("Error koneksi:", error);
-        return "Maaf, asisten AI sedang mengalami gangguan koneksi internet/server lokal.";
+        console.error("Gagal terhubung:", error);
+        tampilkanBalasanAI("Maaf, asisten AI sedang mengalami gangguan koneksi.");
     }
+    
+    inputField.value = '';
 }
 // 1. Fungsi untuk mengirim pesan AI saat tombol Enter ditekan
 function handleAIChatKeyPress(event) {
