@@ -1266,7 +1266,78 @@
               });
           }
         
+// Helper konversi file PNG ke Base64 (agar TTD & Paraf tersimpan permanen)
+function fileToBase64(file) {
+    return new Promise((resolve, reject) => {
+        if (!file) return resolve(null);
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = error => reject(error);
+    });
+}
 
+// Fungsi Pendaftaran Akun yang dipanggil oleh tombol baris 316
+async function handleRegister(event) {
+    if (event) event.preventDefault();
+
+    // Ambil input form pendaftaran
+    const fullNameInput = document.getElementById('reg-fullname') || document.querySelector('#register-form-container input[type="text"]');
+    const usernameInput = document.getElementById('reg-username') || document.querySelectorAll('#register-form-container input[type="text"]')[1];
+    const positionInput = document.getElementById('reg-position') || document.querySelector('#register-form-container select');
+    const colorInput    = document.getElementById('reg-color') || document.querySelector('#register-form-container input[type="color"]');
+    const passwordInput = document.getElementById('reg-password');
+    
+    // File Paraf & TTD
+    const fileParafInput = document.getElementById('reg-paraf') || document.querySelectorAll('#register-form-container input[type="file"]')[0];
+    const fileTTDInput   = document.getElementById('reg-ttd') || document.querySelectorAll('#register-form-container input[type="file"]')[1];
+
+    const fullName = fullNameInput ? fullNameInput.value.trim() : '';
+    const username = usernameInput ? usernameInput.value.trim() : '';
+    const position = positionInput ? positionInput.value : 'Staff KDP';
+    const stampColor = colorInput ? colorInput.value : '#2563eb';
+    const password = passwordInput ? passwordInput.value : '';
+
+    if (!username || !password) {
+        alert("Username dan Sandi wajib diisi!");
+        return;
+    }
+
+    try {
+        // Konversi file PNG TTD dan Paraf
+        const parafBase64 = fileParafInput?.files[0] ? await fileToBase64(fileParafInput.files[0]) : null;
+        const ttdBase64   = fileTTDInput?.files[0] ? await fileToBase64(fileTTDInput.files[0]) : null;
+
+        // Simpan data lengkap user baru ke koleksi 'users' di Firestore
+        await db.collection('users').doc(username.toLowerCase()).set({
+            fullName: fullName || username,
+            username: username,
+            position: position,
+            stampColor: stampColor,
+            password: password,
+            parafUrl: parafBase64,
+            ttdUrl: ttdBase64,
+            role: position,
+            createdAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+
+        alert("Pendaftaran Akun Baru Berhasil! Data tersimpan di Firestore.");
+        
+        // Memperbarui daftar user dinamis (Admin & Dropdown Chat)
+        if (typeof loadUsersFromFirebase === 'function') {
+            loadUsersFromFirebase();
+        }
+
+        // Kembali ke tampilan login atau masuk dashboard
+        if (typeof showAuthScreen === 'function') {
+            showAuthScreen('login');
+        }
+
+    } catch (error) {
+        console.error("Gagal melakukan registrasi ke Firestore:", error);
+        alert("Pendaftaran gagal: " + error.message);
+    }
+}
         function renderNotificationsUI() {
           const listContainer = document.getElementById('notif-list-container');
           const badgeCount = document.getElementById('notif-badge-count');
