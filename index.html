@@ -3683,7 +3683,37 @@ async function handleFileRouting(file) {
                 openPreview(doc.id);
             }, 100);
         }
+// Fungsi untuk memuat daftar user ke dropdown "Kirim ke"
+async function loadChatUsers() {
+    try {
+        const response = await fetch('/api/users'); // Sesuaikan endpoint API Anda jika berbeda
+        const users = await response.json();
+        
+        const targetSelect = document.getElementById('user-chat-target');
+        if (!targetSelect) return;
 
+        // Simpan opsi default (Broadcast)
+        targetSelect.innerHTML = '<option value="admin">Admin / All Users (Broadcast)</option>';
+
+        // Loop data user yang ada di database dan tambahkan ke <select>
+        users.forEach(user => {
+            // Pastikan tidak menampilkan user yang sedang login sendiri (opsional)
+            // if (user.email === currentUserEmail) return; 
+
+            const option = document.createElement('option');
+            option.value = user.id; // atau user.email / user.username sesuai struktur database Anda
+            option.textContent = user.name || user.email; // Nama atau email yang tampil di dropdown
+            targetSelect.appendChild(option);
+        });
+    } catch (error) {
+        console.error("Gagal memuat daftar user untuk chat:", error);
+    }
+}
+
+// Panggil fungsi saat halaman selesai dimuat
+document.addEventListener("DOMContentLoaded", function() {
+    loadChatUsers();
+});
         function openRejectModal() { document.getElementById('reject-reason-modal').classList.remove('hidden'); }
         async function submitDocumentRejection() {
             const reason = document.getElementById('reject-reason-input').value.trim();
@@ -3819,6 +3849,7 @@ document.addEventListener('DOMContentLoaded', () => {
     <!-- Tombol Buka/Tutup Chat -->
     <button id="ai-chat-toggle-btn" type="button" style="background-color: #f39c12; color: #fff; border: none; border-radius: 50%; width: 55px; height: 55px; font-size: 24px; cursor: pointer; box-shadow: 0 4px 15px rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center;">
         💬
+        <span id="chat-notification-badge" style="display: none; position: absolute; top: -5px; right: -5px; background: #e74c3c; color: white; border-radius: 50%; padding: 2px 6px; font-size: 10px; font-weight: bold;">0</span>
     </button>
 
     <!-- Kotak Jendela Chat (Default Disembunyikan) -->
@@ -3972,6 +4003,69 @@ document.addEventListener("DOMContentLoaded", function() {
           window.sendMessagetoAI();
       }
   }
+  let unreadCount = 0;
+
+// 1. Fungsi yang dipanggil ketika ada pesan masuk baru dari user lain
+function handleNewIncomingMessage(senderName, messageText) {
+    const chatBox = document.getElementById('ai-chat-box'); // Sesuaikan dengan ID kotak chat Anda
+    
+    // Cek apakah panel chat sedang tertutup
+    const isChatClosed = !chatBox || chatBox.style.display === 'none' || chatBox.style.display === '';
+
+    if (isChatClosed) {
+        unreadCount++;
+        
+        // Tampilkan badge angka di tombol chat
+        const badge = document.getElementById('chat-notification-badge');
+        if (badge) {
+            badge.textContent = unreadCount;
+            badge.style.display = 'inline-block';
+        }
+
+        // Panggil notifikasi desktop browser (opsional)
+        showBrowserNotification(senderName, messageText);
+    }
+}
+
+// 2. Fungsi untuk memunculkan pop-up notifikasi desktop/browser
+function showBrowserNotification(senderName, messageText) {
+    if ("Notification" in window) {
+        if (Notification.permission === "granted") {
+            new Notification(`Pesan baru dari ${senderName}`, {
+                body: messageText,
+                icon: '/logo.png' // Sesuaikan path logo aplikasi Anda
+            });
+        } else if (Notification.permission !== "denied") {
+            Notification.requestPermission().then(permission => {
+                if (permission === "granted") {
+                    new Notification(`Pesan baru dari ${senderName}`, {
+                        body: messageText,
+                        icon: '/logo.png'
+                    });
+                }
+            });
+        }
+    }
+}
+
+// 3. Meminta izin notifikasi browser saat halaman pertama kali dimuat
+document.addEventListener("DOMContentLoaded", function() {
+    if ("Notification" in window && Notification.permission !== "granted" && Notification.permission !== "denied") {
+        Notification.requestPermission();
+    }
+
+    // Reset hitungan notifikasi saat tombol chat diklik (dibuka)
+    const toggleBtn = document.getElementById('ai-chat-toggle-btn');
+    if (toggleBtn) {
+        toggleBtn.addEventListener('click', function() {
+            unreadCount = 0;
+            const badge = document.getElementById('chat-notification-badge');
+            if (badge) {
+                badge.style.display = 'none';
+            }
+        });
+    }
+});
 </script>
 </body>
 </html>
