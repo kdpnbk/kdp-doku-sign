@@ -1,0 +1,12 @@
+{
+  "manifest_version": 3,
+  "name": "KDP DOKU SIGN Extension",
+  "version": "1.0",
+  "description": "Ekstensi Peluncur Cepat KDP DOKU SIGN",
+  "action": {
+    "default_title": "Buka KDP DOKU SIGN"
+  },
+  "background": {
+    "service_worker": "background.js"
+  }
+}
