@@ -3863,6 +3863,18 @@ document.addEventListener('DOMContentLoaded', () => {
 </div>
 
 <script>
+    // Tambahkan event listener untuk kirim pesan dengan Enter
+document.addEventListener("DOMContentLoaded", function() {
+    const userChatInput = document.getElementById('user-chat-input');
+    if (userChatInput) {
+        userChatInput.addEventListener('keypress', function (e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                sendUserMessage();
+            }
+        });
+    }
+});
   // Script mandiri untuk mengontrol buka/tutup chat tanpa bergantung pada atribut onclick HTML
   document.addEventListener("DOMContentLoaded", () => {
       const toggleBtn = document.getElementById("ai-chat-toggle-btn");
