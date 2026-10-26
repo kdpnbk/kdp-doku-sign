@@ -31,14 +31,14 @@ app.post('/api/chat', async (req, res) => {
 
         // Pemanggilan Groq API dengan struktur objek & model yang valid
         const chatCompletion = await groq.chat.completions.create({
-            messages: [
-                {
-                    role: "user",
-                    content: message,
-                }
-            ],
-            model: "llama-3.3-70b-versatile",
-        });
+         messages: [
+             {
+                 role: "user",
+                 content: message,
+             }
+         ],
+         model: "llama-3.1-8b-instant",
+     });
 
         const aiResponse = chatCompletion.choices[0]?.message?.content || "Tidak ada respons dari AI.";
 
