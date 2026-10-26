@@ -37,7 +37,7 @@ app.post('/api/chat', async (req, res) => {
                     content: message,
                 }
             ],
-            model: "llama-3.1-8b-instant",
+            model: "mixtral-8x7b-32768",
         });
 
         const aiResponse = chatCompletion.choices[0]?.message?.content || "Tidak ada respons dari AI.";
