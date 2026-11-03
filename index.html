@@ -4876,22 +4876,62 @@ function registerChatIncoming(message, docId) {
   refreshChatUnreadState();
 }
 async function markChatAsRead() {
-  if (!currentUser || !auth.currentUser) return;
+  if (!currentUser || !auth?.currentUser || !db || !firebase?.firestore) return;
   const target = document.getElementById('user-chat-target')?.value || '__broadcast__';
-  const now = firebase.firestore.Timestamp.now();
-  const keysToMark = new Set();
+
+  // Simpan waktu pesan terakhir yang benar-benar sudah tampil, bukan waktu
+  // perangkat pengguna. Ini menghindari pesan baru yang datang saat proses
+  // simpan ikut dianggap sudah dibaca.
+  const latestBySender = new Map();
   chatCurrentMessages.forEach(message => {
-    if (message.senderUsername === currentUser.username) return;
-    if (target === '__broadcast__' || message.senderUsername === target) keysToMark.add(chatSenderKey(message));
+    if (!message || message.senderUsername === currentUser.username) return;
+    const belongsToTarget = target === '__broadcast__'
+      ? message.recipientUsername === '__broadcast__' || message.type === 'broadcast'
+      : message.senderUsername === target && message.type !== 'broadcast';
+    if (!belongsToTarget) return;
+
+    const key = chatSenderKey(message);
+    const messageTime = chatTimestamp(message.createdAt);
+    // serverTimestamp yang belum selesai dikomit bernilai null; tunggu snapshot
+    // berikutnya agar tidak menandai pesan yang waktunya belum diketahui.
+    if (!key || key === 'unknown' || !messageTime) return;
+    const previous = latestBySender.get(key) || 0;
+    if (messageTime > previous) latestBySender.set(key, messageTime);
   });
-  if (!keysToMark.size) return;
-  keysToMark.forEach(key => { chatReadBySender[key] = now; });
-  refreshChatUnreadState();
-  const update = { uid: auth.currentUser.uid, updatedAt: firebase.firestore.FieldValue.serverTimestamp() };
-  keysToMark.forEach(key => { update[`lastReadBySender.${key}`] = now; });
+
+  if (!latestBySender.size) return;
+
+  const update = {
+    uid: auth.currentUser.uid,
+    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+  };
+  let changed = false;
+  latestBySender.forEach((millis, key) => {
+    const alreadyRead = chatTimestamp(chatReadBySender[key] || chatReadAt);
+    if (millis > alreadyRead) {
+      const readTimestamp = firebase.firestore.Timestamp.fromMillis(millis);
+      update[`lastReadBySender.${key}`] = readTimestamp;
+      changed = true;
+    }
+  });
+  if (!changed) {
+    refreshChatUnreadState();
+    return;
+  }
+
   try {
+    // Persist dulu. Badge baru diperbarui setelah Firestore mengonfirmasi,
+    // sehingga status baca tidak hilang diam-diam jika Security Rules menolak.
     await db.collection('chat_reads').doc(auth.currentUser.uid).set(update, { merge: true });
-  } catch (err) { console.warn('Status baca chat belum dapat disimpan:', err); }
+    latestBySender.forEach((millis, key) => {
+      const existing = chatTimestamp(chatReadBySender[key] || chatReadAt);
+      if (millis > existing) chatReadBySender[key] = firebase.firestore.Timestamp.fromMillis(millis);
+    });
+    refreshChatUnreadState();
+  } catch (err) {
+    console.warn('Status baca chat belum dapat disimpan:', err);
+    showToast?.('Pesan sudah dibuka, tetapi status baca belum tersimpan. Periksa izin Firestore.', 3500);
+  }
 }
 function renderChatConversationList() {
   const host = document.getElementById('chat-conversation-list');
@@ -5059,7 +5099,11 @@ function switchChatTab(tab) {
   aiPanel.style.display = isAI ? 'flex' : 'none'; userPanel.style.display = isAI ? 'none' : 'flex';
   aiBtn.style.color = isAI ? '#d4af37' : '#999'; aiBtn.style.borderBottom = isAI ? '2px solid #d4af37' : '2px solid transparent'; aiBtn.style.background = isAI ? '#242424' : '#191919';
   userBtn.style.color = isAI ? '#999' : '#d4af37'; userBtn.style.borderBottom = isAI ? '2px solid transparent' : '2px solid #d4af37'; userBtn.style.background = isAI ? '#191919' : '#242424';
-  if (!isAI) { startConversationListener(); renderChatConversationList(); }
+  if (!isAI) {
+    startConversationListener();
+    renderChatConversationList();
+    if (isChatWidgetOpen()) markChatAsRead();
+  }
 }
 function appendKiraMessage(text, fromUser) {
   const container = document.getElementById('ai-chat-messages'); if (!container) return;
@@ -5185,7 +5229,12 @@ function initChatWidget() {
   document.getElementById('ai-chat-toggle-btn')?.addEventListener('click', () => {
     if (!box) return;
     box.style.display = box.style.display === 'none' || !box.style.display ? 'flex' : 'none';
-    if (isChatWidgetOpen() && document.getElementById('panel-chat-user')?.style.display !== 'none') startConversationListener();
+    if (isChatWidgetOpen() && document.getElementById('panel-chat-user')?.style.display !== 'none') {
+      startConversationListener();
+      // Bila listener sudah aktif dan tidak mengirim snapshot baru, tetap catat
+      // pesan yang sedang terlihat sebagai telah dibaca.
+      markChatAsRead();
+    }
   });
   document.getElementById('ai-chat-close-btn')?.addEventListener('click', () => { if (box) box.style.display = 'none'; });
   const quickToggle = document.getElementById('kira-quick-toggle');
