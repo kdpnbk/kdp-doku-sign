@@ -4894,14 +4894,12 @@ function isChatMessageForCurrentUser(message) {
   // Broadcast valid hanya jika benar-benar dikirim oleh user lain.
   if (message.type === 'broadcast' || recipient === '__broadcast__') return true;
 
-  // Chat pribadi wajib ditujukan kepada akun yang sedang login.
+  // Chat pribadi hanya sah sebagai pesan masuk jika recipientUid secara
+  // eksplisit sama dengan UID akun yang sedang login. Jangan menebak dari
+  // participantUids karena field itu memuat pengirim DAN penerima.
   if (currentUid && recipientUid) return recipientUid === currentUid;
   if (recipient && me) return recipient === me;
-
-  // Kompatibilitas data lama: hanya terima jika UID peserta memuat akun ini
-  // dan pengirimnya bukan akun yang sedang login.
-  const participantUids = Array.isArray(message.participantUids) ? message.participantUids.map(String) : [];
-  return !!currentUid && participantUids.includes(currentUid);
+  return false;
 }
 function isChatMessageUnread(message) {
   // Badge hanya boleh berasal dari pesan nyata yang ditujukan ke akun ini.
@@ -5102,7 +5100,10 @@ function initChatRealtime() {
     chatReadBySender = doc.exists ? (doc.data().lastReadBySender || {}) : {};
     chatReadAt = doc.exists ? (doc.data().lastReadAt || null) : null;
   }).catch(() => { chatReadBySender = {}; chatReadAt = null; }).finally(() => {
-    const privateQuery = db.collection('chat_messages').where('participantUids', 'array-contains', auth.currentUser.uid).limit(150);
+    // Hanya ambil chat pribadi yang penerimanya adalah akun login.
+    // participantUids sengaja tidak dipakai untuk badge karena berisi kedua pihak
+    // (pengirim dan penerima) sehingga dapat memicu notifikasi yang bukan inbound.
+    const privateQuery = db.collection('chat_messages').where('recipientUid', '==', auth.currentUser.uid).limit(150);
     const broadcastQuery = db.collection('chat_messages').where('recipientUsername', '==', '__broadcast__').limit(150);
     const processUnread = (snapshot, source) => {
       const sourceMap = source === 'broadcast' ? chatBroadcastIncomingById : chatPrivateIncomingById;
