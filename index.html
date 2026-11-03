@@ -14,6 +14,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>KDP DOKU SIGN - System Approval & Digital Signature</title>
+    <!-- Auth migration: Firebase Authentication + Firestore user profiles -->
     <!-- Favicon Otomatis Berupa Emoji 🗄️ -->
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🗄️</text></svg>">
     <!-- Tailwind CSS CDN -->
@@ -49,7 +50,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
-        body { font-family: 'Inter', sans-serif; background-color: #0a0a0a; color: #e5e5e5; touch-action: manipulation; opacity: 0; transition: opacity 0.15s ease-in; }
+        body { font-family: 'Inter', sans-serif; background-color: #0a0a0a; color: #e5e5e5; touch-action: manipulation; opacity: 1; }
         body.loaded { opacity: 1; }
         
         body.dark-theme { background-color: #0a0a0a; color: #e5e5e5; }
@@ -90,6 +91,46 @@
             transition: opacity .18s ease, transform .18s ease;
         }
         #app-toast.toast-visible { opacity: 1; transform: translateY(0); }
+
+        #approval-progress-overlay {
+            position: fixed; inset: 0; z-index: 1000000; display: none;
+            align-items: center; justify-content: center; padding: 20px;
+            background: rgba(0,0,0,.72); backdrop-filter: blur(3px);
+        }
+        #approval-progress-overlay.active { display: flex; }
+        #approval-progress-card {
+            width: min(420px, 100%); background: #171717; color: #f5f5f5;
+            border: 1px solid #d4af37; border-radius: 16px; padding: 24px;
+            box-shadow: 0 20px 60px rgba(0,0,0,.55); text-align: center;
+        }
+        .approval-spinner {
+            width: 42px; height: 42px; margin: 0 auto 14px;
+            border: 4px solid rgba(212,175,55,.22); border-top-color: #d4af37;
+            border-radius: 50%; animation: approval-spin .8s linear infinite;
+        }
+        @keyframes approval-spin { to { transform: rotate(360deg); } }
+        /* Cegah layar login/dashboard berkedip sebelum Firebase memulihkan sesi. */
+        body.auth-initializing #auth-screen,
+        body.auth-initializing #app-dashboard { display: none !important; }
+        #auth-bootstrap-screen {
+            position: fixed; inset: 0; z-index: 2000000; display: none;
+            align-items: center; justify-content: center; padding: 20px;
+            background: #0a0a0a; color: #e5e5e5;
+        }
+        body.auth-initializing #auth-bootstrap-screen { display: flex; }
+        #auth-bootstrap-card {
+            width: min(340px, 100%); padding: 25px; text-align: center;
+            background: #141414; border: 1px solid #333; border-radius: 16px;
+        }
+        #auth-bootstrap-spinner {
+            width: 34px; height: 34px; margin: 0 auto 14px;
+            border: 3px solid rgba(212,175,55,.22); border-top-color: #d4af37;
+            border-radius: 50%; animation: approval-spin .8s linear infinite;
+        }
+
+        #approval-progress-track { height: 7px; background: #333; border-radius: 99px; overflow: hidden; margin-top: 16px; }
+        #approval-progress-bar { height: 100%; width: 35%; background: #d4af37; border-radius: 99px; animation: approval-progress 1.6s ease-in-out infinite; }
+        @keyframes approval-progress { 0% { transform: translateX(-120%); } 100% { transform: translateX(300%); } }
     </style>
 
     <style>
@@ -197,9 +238,8 @@
     </style>
 
     <script>
-        let usersDatabase = {
-            'admin': { fullname: 'Super Administrator', username: 'admin', password: 'admin123', position: 'administrator', roleTitle: 'Administrator', inkColor: '#2563eb', avatarPng: null, parafPng: null, ttdPng: null }
-        };
+        // Profil pengguna dimuat dari Firestore; status login selalu diverifikasi Firebase Authentication.
+        let usersDatabase = {};
         let currentUser = null;
         let currentSummaryFilter = 'all';
         let activeDocId = null;
@@ -207,6 +247,8 @@
         let placedStamps = [];
         let loadedPdfDocument = null;
         let totalPdfPages = 1;
+        let pdfPageObserver = null;
+        let pdfPreviewSession = 0;
         let documents = [];
         let notifications = [];
         let currentActiveMenu = 'ringkasan';
@@ -220,12 +262,8 @@
             const savedDocs = localStorage.getItem('kdp_documents_db');
             if (savedDocs) documents = JSON.parse(savedDocs);
             
-            const savedUser = localStorage.getItem('kdp_current_user');
-            if (savedUser && usersDatabase[savedUser]) {
-                currentUser = usersDatabase[savedUser];
-            } else {
-                currentUser = null;
-            }
+            // Sesi hanya dianggap sah jika Firebase Authentication mengonfirmasinya.
+            currentUser = null;
         } catch(e){}
     </script>
 
@@ -247,8 +285,24 @@
     }
     </script>
 </head>
-<body class="dark-theme min-h-screen text-xs">
+<body class="dark-theme min-h-screen text-xs auth-initializing">
+    <div id="auth-bootstrap-screen" role="status" aria-live="polite">
+        <div id="auth-bootstrap-card">
+            <div id="auth-bootstrap-spinner" aria-hidden="true"></div>
+            <p class="text-sm font-bold text-premium-gold">Memulihkan sesi pengguna...</p>
+            <p class="text-[11px] text-sub mt-2">Mohon tunggu sebentar.</p>
+        </div>
+    </div>
     <div id="app-toast" role="status" aria-live="polite"></div>
+    <div id="approval-progress-overlay" role="status" aria-live="assertive" aria-atomic="true">
+        <div id="approval-progress-card">
+            <div class="approval-spinner" aria-hidden="true"></div>
+            <h3 id="approval-progress-title" class="text-sm font-bold text-premium-gold">Memproses persetujuan...</h3>
+            <p id="approval-progress-message" class="text-xs text-gray-300 mt-2">Mohon tunggu, jangan tutup halaman ini.</p>
+            <div id="approval-progress-track"><div id="approval-progress-bar"></div></div>
+            <p class="text-[10px] text-gray-500 mt-3">Waktu proses bergantung pada ukuran PDF dan koneksi internet.</p>
+        </div>
+    </div>
 
     <!-- HALAMAN AUTH / LOGIN -->
     <div id="auth-screen" class="min-h-screen flex items-center justify-center p-4 bg-app relative overflow-hidden">
@@ -261,8 +315,9 @@
             <div id="login-form-container">
                 <form id="login-form" onsubmit="event.preventDefault(); handleLogin();" class="space-y-3">
                     <div>
-                        <label class="block text-[11px] font-medium text-heading mb-1">Username</label>
-                        <input type="text" id="login-username" placeholder="Masukkan username" class="w-full bg-input border border-panel rounded-lg px-3 py-2 text-xs text-heading outline-none focus:border-premium-gold">
+                        <label class="block text-[11px] font-medium text-heading mb-1">Username atau Email</label>
+                        <input type="text" id="login-username" name="identifier" autocomplete="username" placeholder="Masukkan username atau email" required class="w-full bg-input border border-panel rounded-lg px-3 py-2 text-xs text-heading outline-none focus:border-premium-gold">
+                        <p class="text-[9px] text-sub mt-1">Gunakan salah satu: username (contoh: faisalprdd) atau email terdaftar.</p>
                     </div>
                     <div>
                         <label class="block text-[11px] font-medium text-heading mb-1">Kata Sandi</label>
@@ -284,6 +339,7 @@
                     <button type="button" onclick="toggleAuthForm('login')" class="text-sub hover:text-heading text-xs">✕ Tutup</button>
                 </div>
                 <div><label class="block text-[11px] font-medium text-heading mb-1">Nama Lengkap</label><input type="text" id="reg-fullname" class="w-full bg-input border border-panel rounded-lg px-3 py-1.5 text-xs text-heading"></div>
+                <div><label class="block text-[11px] font-medium text-heading mb-1">Email</label><input type="email" id="reg-email" placeholder="nama@perusahaan.com" class="w-full bg-input border border-panel rounded-lg px-3 py-1.5 text-xs text-heading"></div>
                 <div><label class="block text-[11px] font-medium text-heading mb-1">Username</label><input type="text" id="reg-username" class="w-full bg-input border border-panel rounded-lg px-3 py-1.5 text-xs text-heading"></div>
                 <div><label class="block text-[11px] font-medium text-heading mb-1">Posisi / Jabatan</label>
                     <select id="reg-position" class="w-full bg-input border border-panel rounded-lg px-3 py-1.5 text-xs text-heading">
@@ -511,6 +567,7 @@
                     <div class="bg-panel p-6 rounded-2xl shadow-lg border border-panel max-w-lg space-y-3 mx-auto">
                         <h3 class="text-sm font-bold text-heading border-b border-panel pb-2">Formulir Pendaftaran User Baru</h3>
                         <div><label class="block text-[11px] font-medium text-heading mb-1">Nama Lengkap</label><input type="text" id="new-user-fullname" class="w-full bg-input border border-panel rounded-lg px-3 py-1.5 text-xs text-heading"></div>
+                        <div><label class="block text-[11px] font-medium text-heading mb-1">Email</label><input type="email" id="new-user-email" placeholder="nama@perusahaan.com" class="w-full bg-input border border-panel rounded-lg px-3 py-1.5 text-xs text-heading"></div>
                         <div><label class="block text-[11px] font-medium text-heading mb-1">Username</label><input type="text" id="new-user-username" class="w-full bg-input border border-panel rounded-lg px-3 py-1.5 text-xs text-heading"></div>
                         <div><label class="block text-[11px] font-medium text-heading mb-1">Posisi / Jabatan</label>
                             <select id="new-user-position" class="w-full bg-input border border-panel rounded-lg px-3 py-1.5 text-xs text-heading">
@@ -555,7 +612,7 @@
                                 <span class="text-[10px] text-sub">Warna stempel dan teks user ini</span>
                             </div>
                         </div>
-                        <div><label class="block text-[11px] font-medium text-heading mb-1">Ganti Sandi Baru (Opsional)</label><input type="password" id="edit-user-password" placeholder="Kosongkan jika tidak diubah" class="w-full bg-input border border-panel rounded-lg px-3 py-1.5 text-xs text-heading"></div>
+                        <div class="rounded-lg border border-panel bg-input/50 p-2 text-[10px] text-sub">Password akun dikelola oleh Firebase Authentication. Gunakan fitur reset password, bukan mengubah password di profil Firestore.</div>
                         <div><label class="block text-[11px] font-medium text-heading mb-1">Update PNG Paraf (Opsional)</label><input type="file" id="edit-user-paraf-file" accept="image/png" class="w-full text-xs text-sub bg-input rounded-lg border border-panel"></div>
                         <div><label class="block text-[11px] font-medium text-heading mb-1">Update PNG TTD (Opsional)</label><input type="file" id="edit-user-ttd-file" accept="image/png" class="w-full text-xs text-sub bg-input rounded-lg border border-panel"></div>
                         <button type="button" onclick="handleAdminSaveEditUser()" class="w-full bg-premium-gold text-regal-black py-2.5 rounded-lg text-xs font-bold mt-2">Simpan Perubahan User</button>
@@ -569,7 +626,7 @@
                         <button onclick="switchMenu('utility-merge')" class="bg-panel p-6 rounded-2xl border border-panel text-left hover:border-premium-gold transition shadow">
                             <div class="text-3xl mb-3">📚</div>
                             <div class="text-sm font-bold text-heading">Gabung PDF</div>
-                            <p class="text-xs text-sub mt-1">Gabungkan beberapa file PDF menjadi satu file dokumen dengan drag & drop.</p>
+                            <p class="text-xs text-sub mt-1">Gabungkan beberapa file PDF. Hasil akan diunggah ke cloud saat diteruskan ke approval.</p>
                         </button>
                         <button onclick="switchMenu('utility-organize-pages')" class="bg-panel p-6 rounded-2xl border border-panel text-left hover:border-premium-gold transition shadow">
                             <div class="text-3xl mb-3">📑</div>
@@ -1091,11 +1148,12 @@
     <!-- Firebase SDK (Versi Compatibility CDN) -->
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
 
     <script>
       // Konfigurasi Firebase
       const firebaseConfig = {
-        apiKey: "AIzaSyAi6YLZSr-M0yVyfuxgjsgscuTJcQYLFwE",
+        apiKey: "AIzaSyAi5YLZSr-M0yVyfuxgjsgscuTJcQYLFwE",
         authDomain: "kdp-doku-sign.firebaseapp.com",
         projectId: "kdp-doku-sign",
         storageBucket: "kdp-doku-sign.firebasestorage.app",
@@ -1106,6 +1164,13 @@
       // Inisialisasi Firebase & Firestore
       firebase.initializeApp(firebaseConfig);
       const db = firebase.firestore();
+      const auth = firebase.auth();
+      // Akun admin terpisah: pengguna cukup mengetik username 'admin'.
+      // Administrator menggunakan email resmi yang sudah dibuat di Firebase Authentication.
+      const ADMIN_AUTH_EMAIL = 'kdpnbk@gmail.com';
+      // Pastikan pengaturan sesi selesai sebelum proses login dimulai.
+      const authPersistenceReady = auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL)
+        .catch(err => { console.error("Gagal mengatur persistensi Auth:", err); });
     </script>
 <!-- Supabase JS Client SDK -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -1148,6 +1213,21 @@
           }
         }
 
+        // Cache browser hanya menyimpan metadata dan URL cloud, bukan isi PDF Base64.
+        // File PDF tetap berada di provider cloud agar tidak memenuhi kuota localStorage.
+        function cacheDocumentsLocally() {
+            const compactDocuments = (documents || []).map(doc => {
+                const cached = { ...doc };
+                if (typeof cached.fileData === 'string' &&
+                    /^data:application\/pdf;base64,/i.test(cached.fileData)) {
+                    cached.fileData = null;
+                    cached._fileStoredInCloud = true;
+                }
+                return cached;
+            });
+            localStorage.setItem('kdp_documents_db', JSON.stringify(compactDocuments));
+        }
+
         function initRealtimeListeners() {
           // 1. Listen koleksi 'documents' secara real-time (Bebas batasan 1MB per dokumen)
           db.collection('documents').onSnapshot((snapshot) => {
@@ -1156,7 +1236,7 @@
               documents.push(doc.data());
             });
             documents.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-            localStorage.setItem('kdp_documents_db', JSON.stringify(documents));
+            cacheDocumentsLocally();
             
             if (document.getElementById('app-dashboard') && !document.getElementById('app-dashboard').classList.contains('hidden')) {
               updateStatistics();
@@ -1168,20 +1248,20 @@
             console.error("Gagal mendengarkan koleksi documents:", error);
           });
 
-          // 2. Listen database user dari app_state/database
-          db.collection('app_state').doc('database').onSnapshot((docSnap) => {
-            if (docSnap.exists) {
-              const data = docSnap.data();
-              if (data.usersDatabase) {
-                usersDatabase = data.usersDatabase;
-                localStorage.setItem('kdp_users_db', JSON.stringify(usersDatabase));
-                if (currentUser && usersDatabase[currentUser.username]) {
-                  currentUser = usersDatabase[currentUser.username];
-                  updateUIUserDisplay();
-                }
-              }
+          // 2. Sumber utama akun adalah koleksi users (tidak lagi digandakan di app_state).
+          db.collection('users').onSnapshot((snapshot) => {
+            const freshUsers = {};
+            snapshot.forEach((userDoc) => {
+              freshUsers[userDoc.id] = normalizeCloudUser(userDoc.data() || {}, userDoc.id);
+            });
+            usersDatabase = freshUsers;
+            localStorage.setItem('kdp_users_db', JSON.stringify(usersDatabase));
+            if (currentUser && usersDatabase[currentUser.username]) {
+              currentUser = usersDatabase[currentUser.username];
+              updateUIUserDisplay();
+              loadChatUsers();
             }
-          });
+          }, (error) => console.error('Gagal mendengarkan koleksi users:', error));
 
           // 3. Listen Timeline Aktivitas
           const tbody = document.getElementById('activityLogBody');
@@ -1277,67 +1357,6 @@ function fileToBase64(file) {
     });
 }
 
-// Fungsi Pendaftaran Akun yang dipanggil oleh tombol baris 316
-async function handleRegister(event) {
-    if (event) event.preventDefault();
-
-    // Ambil input form pendaftaran
-    const fullNameInput = document.getElementById('reg-fullname') || document.querySelector('#register-form-container input[type="text"]');
-    const usernameInput = document.getElementById('reg-username') || document.querySelectorAll('#register-form-container input[type="text"]')[1];
-    const positionInput = document.getElementById('reg-position') || document.querySelector('#register-form-container select');
-    const colorInput    = document.getElementById('reg-color') || document.querySelector('#register-form-container input[type="color"]');
-    const passwordInput = document.getElementById('reg-password');
-    
-    // File Paraf & TTD
-    const fileParafInput = document.getElementById('reg-paraf') || document.querySelectorAll('#register-form-container input[type="file"]')[0];
-    const fileTTDInput   = document.getElementById('reg-ttd') || document.querySelectorAll('#register-form-container input[type="file"]')[1];
-
-    const fullName = fullNameInput ? fullNameInput.value.trim() : '';
-    const username = usernameInput ? usernameInput.value.trim() : '';
-    const position = positionInput ? positionInput.value : 'Staff KDP';
-    const stampColor = colorInput ? colorInput.value : '#2563eb';
-    const password = passwordInput ? passwordInput.value : '';
-
-    if (!username || !password) {
-        alert("Username dan Sandi wajib diisi!");
-        return;
-    }
-
-    try {
-        // Konversi file PNG TTD dan Paraf
-        const parafBase64 = fileParafInput?.files[0] ? await fileToBase64(fileParafInput.files[0]) : null;
-        const ttdBase64   = fileTTDInput?.files[0] ? await fileToBase64(fileTTDInput.files[0]) : null;
-
-        // Simpan data lengkap user baru ke koleksi 'users' di Firestore
-        await db.collection('users').doc(username.toLowerCase()).set({
-            fullName: fullName || username,
-            username: username,
-            position: position,
-            stampColor: stampColor,
-            password: password,
-            parafUrl: parafBase64,
-            ttdUrl: ttdBase64,
-            role: position,
-            createdAt: firebase.firestore.FieldValue.serverTimestamp()
-        });
-
-        alert("Pendaftaran Akun Baru Berhasil! Data tersimpan di Firestore.");
-        
-        // Memperbarui daftar user dinamis (Admin & Dropdown Chat)
-        if (typeof loadUsersFromFirebase === 'function') {
-            loadUsersFromFirebase();
-        }
-
-        // Kembali ke tampilan login atau masuk dashboard
-        if (typeof showAuthScreen === 'function') {
-            showAuthScreen('login');
-        }
-
-    } catch (error) {
-        console.error("Gagal melakukan registrasi ke Firestore:", error);
-        alert("Pendaftaran gagal: " + error.message);
-    }
-}
         function renderNotificationsUI() {
           const listContainer = document.getElementById('notif-list-container');
           const badgeCount = document.getElementById('notif-badge-count');
@@ -1409,51 +1428,98 @@ async function handleRegister(event) {
             'pengaturan': 'Pengaturan Sistem & Tema'
         };
 
-        // ==========================================
-// TAHAP 2: AUTO-CLEANUP EXPIRED DOCUMENTS
-// ==========================================
-function autoCleanupExpiredDocuments() {
-    if (!documents || !documents.length) return;
-    const now = Date.now();
-    const TEN_DAYS_MS = 10 * 24 * 60 * 60 * 1000;      // 10 Hari dalam milidetik
-    const SIXTY_DAYS_MS = 60 * 24 * 60 * 60 * 1000;   // 60 Hari (2 Bulan) dalam milidetik
-    const initialCount = documents.length;
-    
-    documents = documents.filter(doc => {
-        const updatedAt = doc.lastUpdated || doc.createdAt || doc.id;
-        const ageMs = now - updatedAt;
-
-        // 1. Dokumen Ditolak -> Hapus jika usia > 10 hari
-        if (doc.step === 0 || doc.status?.startsWith('Ditolak')) {
-            if (ageMs > TEN_DAYS_MS) return false;
-        } 
-        // 2. Dokumen Selesai -> Hapus jika usia > 60 hari (2 Bulan)
-        else if (doc.isCompleted || doc.status?.startsWith('Selesai')) {
-            if (ageMs > SIXTY_DAYS_MS) return false;
-        }
-
-        return true;
-    });
-
-    // Jika ada dokumen yang terhapus, perbarui data di Firestore
-    if (documents.length < initialCount) {
-        saveStateToCloud();
-        recordLog(`Auto-Cleanup: Menghapus ${initialCount - documents.length} dokumen yang telah kadaluarsa.`);
+        // RETENSI DOKUMEN: ditolak 5 hari, selesai 60 hari.
+const KDP_RETENTION = { rejectedDays: 5, completedDays: 60 };
+const KDP_DAY_MS = 24 * 60 * 60 * 1000;
+function isRejectedDocument(doc) { return doc.step === 0 || String(doc.status || '').startsWith('Ditolak'); }
+function isCompletedDocument(doc) { return !!doc.isCompleted || String(doc.status || '').startsWith('Selesai'); }
+function getDocumentRetentionStart(doc) {
+    if (isRejectedDocument(doc)) return Number(doc.rejectedAt || doc.lastUpdated || doc.createdAt || 0);
+    if (isCompletedDocument(doc)) return Number(doc.completedAt || doc.lastUpdated || doc.createdAt || 0);
+    return 0;
+}
+async function deleteCloudAsset(asset) {
+    if (!asset || !asset.storageType) return;
+    if (!['cloudinary', 'r2', 'supabase'].includes(asset.storageType)) {
+        throw new Error(`Provider penyimpanan tidak dikenal: ${asset.storageType}`);
     }
+    if (!KDP_STORAGE_DELETE_ENDPOINT) throw new Error('Endpoint backend penghapusan belum dikonfigurasi.');
+    const user = auth.currentUser;
+    if (!user) throw new Error('Sesi login tidak tersedia. Silakan login kembali.');
+    const token = await user.getIdToken(true);
+    const response = await fetch(`${KDP_STORAGE_DELETE_ENDPOINT}/delete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ action: 'delete', asset })
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || !result.success) throw new Error(result.error || `Gagal menghapus ${asset.storageType}.`);
+}
+function getDocAssets(doc) {
+    const assets = [];
+    if (doc.fileData && doc.storageType) assets.push({ storageType:doc.storageType, storagePath:doc.storagePath, storageBucket:doc.storageBucket, publicId:doc.storagePublicId, url:doc.fileData });
+    return assets;
 }
 
-        function calculateRemainingDays(doc) {
-            const now = Date.now();
-            const TEN_DAYS_MS = 10 * 24 * 60 * 60 * 1000;
-            const SIXTY_DAYS_MS = 60 * 24 * 60 * 60 * 1000;
-            const updatedAt = doc.lastUpdated || doc.createdAt || doc.id;
-            const ageMs = now - updatedAt;
-
-            if (doc.step === 0 || doc.status?.startsWith('Ditolak')) {
-                return Math.max(0, Math.ceil((TEN_DAYS_MS - ageMs) / (24 * 60 * 60 * 1000)));
-            }
-            return Math.max(0, Math.ceil((SIXTY_DAYS_MS - ageMs) / (24 * 60 * 60 * 1000)));
-        }
+// Metadata aset profil disimpan terpisah per jenis agar dapat dihapus dari provider asal.
+function getProfileAsset(user, fieldName) {
+    if (!user || !user[fieldName]) return null;
+    const prefix = fieldName.replace('Png', '');
+    const storageType = user[`${prefix}StorageType`];
+    if (!storageType) return null; // aset lama tanpa metadata: jangan menebak lokasi fisiknya.
+    return {
+        storageType,
+        storagePath: user[`${prefix}StoragePath`] || null,
+        storageBucket: user[`${prefix}StorageBucket`] || null,
+        publicId: user[`${prefix}StoragePublicId`] || null,
+        url: user[fieldName]
+    };
+}
+function setProfileAssetMetadata(user, fieldName, result) {
+    const prefix = fieldName.replace('Png', '');
+    user[fieldName] = result.fileData;
+    user[`${prefix}StorageType`] = result.storageType;
+    user[`${prefix}StoragePath`] = result.storagePath || null;
+    user[`${prefix}StorageBucket`] = result.storageBucket || null;
+    user[`${prefix}StoragePublicId`] = result.storagePublicId || null;
+    user[`${prefix}SizeBytes`] = result.sizeBytes;
+}
+async function deleteReplacedProfileAsset(oldAsset, newUrl) {
+    if (!oldAsset || oldAsset.url === newUrl) return;
+    // Jangan menghapus aset lama sampai metadata URL baru berhasil disimpan.
+    await deleteCloudAsset(oldAsset);
+}
+async function deleteDocumentEverywhere(doc) {
+    // Hapus objek fisik lebih dahulu. Jika satu provider gagal, metadata tetap dipertahankan.
+    for (const asset of getDocAssets(doc)) await deleteCloudAsset(asset);
+    await db.collection('documents').doc(doc.id).delete();
+    documents = documents.filter(item => item.id !== doc.id);
+    cacheDocumentsLocally();
+    await saveStateToCloud();
+    await recordLog(`Penghapusan permanen dokumen dan seluruh objek cloud: ${doc.title || doc.id}`);
+}
+async function autoCleanupExpiredDocuments() {
+    if (!documents || !documents.length) return;
+    const now = Date.now();
+    const expired = documents.filter(doc => {
+        const rejected = isRejectedDocument(doc), completed = isCompletedDocument(doc);
+        if (!rejected && !completed) return false;
+        const start = getDocumentRetentionStart(doc);
+        const limit = (rejected ? KDP_RETENTION.rejectedDays : KDP_RETENTION.completedDays) * KDP_DAY_MS;
+        return start > 0 && now - start >= limit;
+    });
+    for (const doc of expired) {
+        try { await deleteDocumentEverywhere(doc); }
+        catch (err) { console.error('Auto-cleanup gagal; metadata dipertahankan untuk percobaan berikutnya:', doc.id, err); }
+    }
+    if (expired.length) { updateStatistics(); renderSummaryTable(); }
+}
+function calculateRemainingDays(doc) {
+    const start = getDocumentRetentionStart(doc);
+    if (!start) return isRejectedDocument(doc) ? KDP_RETENTION.rejectedDays : KDP_RETENTION.completedDays;
+    const days = isRejectedDocument(doc) ? KDP_RETENTION.rejectedDays : KDP_RETENTION.completedDays;
+    return Math.max(0, Math.ceil((days * KDP_DAY_MS - (Date.now() - start)) / KDP_DAY_MS));
+}
 
         function formatDocDate(timestamp) {
             if (!timestamp) return '-';
@@ -1463,43 +1529,131 @@ function autoCleanupExpiredDocuments() {
             return `${days[d.getDay()]}, ${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
         }
 
+        function normalizeCloudUser(raw, usernameHint = '') {
+            const position = raw.position || raw.role || 'staff_kdp';
+            const username = String(raw.username || usernameHint).trim().toLowerCase();
+            return {
+                ...raw,
+                username,
+                email: raw.email || "",
+                fullname: raw.fullname || raw.fullName || username,
+                position,
+                roleTitle: raw.roleTitle || roleTitlesMap[position] || position,
+                inkColor: raw.inkColor || raw.stampColor || '#2563eb',
+                parafPng: raw.parafPng || raw.parafUrl || null,
+                ttdPng: raw.ttdPng || raw.ttdUrl || null,
+                avatarPng: raw.avatarPng || raw.avatarUrl || null
+            };
+        }
+
+        async function loadUsersFromFirebase() {
+            try {
+                const snapshot = await db.collection('users').get();
+                snapshot.forEach(doc => {
+                    const raw = doc.data() || {};
+                    const user = normalizeCloudUser(raw, doc.id);
+                    if (user.username) usersDatabase[user.username] = user;
+                });
+                localStorage.setItem('kdp_users_db', JSON.stringify(usersDatabase));
+            } catch (err) {
+                console.error('Gagal memuat koleksi users dari Firestore:', err);
+            }
+        }
+
         async function loadStateFromCloud() {
             try {
                 const docSnap = await db.collection('app_state').doc('database').get();
                 if (docSnap.exists) {
                     const data = docSnap.data();
                     if (data.documents) documents = data.documents;
-                    if (data.usersDatabase) usersDatabase = data.usersDatabase;
+                    if (data.usersDatabase) usersDatabase = { ...usersDatabase, ...data.usersDatabase };
                     
-                    localStorage.setItem('kdp_documents_db', JSON.stringify(documents));
+                    cacheDocumentsLocally();
                     localStorage.setItem('kdp_users_db', JSON.stringify(usersDatabase));
                 }
+                await loadUsersFromFirebase();
             } catch (err) {
                 console.error("Gagal memuat dari Firestore:", err);
             }
         }
 
         window.addEventListener('DOMContentLoaded', async () => {
-            await loadStateFromCloud();
-            autoCleanupExpiredDocuments();
-            initRealtimeListeners();
-            
-            const savedMenu = localStorage.getItem('kdp_active_menu');
+            const authScreen = document.getElementById('auth-screen');
+            const dashboard = document.getElementById('app-dashboard');
 
-            if (currentUser) {
-                document.getElementById('auth-screen').classList.add('hidden');
-                document.getElementById('app-dashboard').classList.remove('hidden');
-                updateUIUserDisplay();
-                updateStatistics();
-                switchMenu(savedMenu || 'ringkasan');
-            } else {
-                document.getElementById('auth-screen').classList.remove('hidden');
-                document.getElementById('app-dashboard').classList.add('hidden');
+            // Kedua halaman utama tetap tersembunyi sampai Firebase mengirim
+            // status autentikasi awal (sesi tersimpan sudah selesai dipulihkan).
+            if (authScreen) authScreen.classList.add('hidden');
+            if (dashboard) dashboard.classList.add('hidden');
+
+            try {
+                const authUser = await new Promise((resolve, reject) => {
+                    let unsubscribe = null;
+                    unsubscribe = auth.onAuthStateChanged(
+                        user => {
+                            if (unsubscribe) unsubscribe();
+                            resolve(user || null);
+                        },
+                        error => {
+                            if (unsubscribe) unsubscribe();
+                            reject(error);
+                        }
+                    );
+                });
+
+                await loadStateFromCloud();
+                autoCleanupExpiredDocuments();
+                initRealtimeListeners();
+
+                if (authUser) {
+                    const profileSnap = await db.collection('users')
+                        .where('uid', '==', authUser.uid).limit(1).get();
+                    if (!profileSnap.empty) {
+                        const profileDoc = profileSnap.docs[0];
+                        currentUser = normalizeCloudUser(profileDoc.data(), profileDoc.id);
+                        updateKiraAccessMode(true);
+                        currentUser.uid = authUser.uid;
+                        initChatRealtime();
+                        currentUser.email = authUser.email || currentUser.email;
+                        usersDatabase[currentUser.username] = currentUser;
+                        localStorage.setItem('kdp_users_db', JSON.stringify(usersDatabase));
+                        localStorage.setItem('kdp_current_user', currentUser.username);
+
+                        if (authScreen) authScreen.classList.add('hidden');
+                        if (dashboard) dashboard.classList.remove('hidden');
+                        updateUIUserDisplay();
+                        updateStatistics();
+                        const savedMenu = localStorage.getItem('kdp_active_menu');
+                        switchMenu(savedMenu || 'ringkasan');
+                    } else {
+                        console.error('Sesi Firebase aktif, tetapi profil pengguna tidak ditemukan.');
+                        await auth.signOut();
+                        currentUser = null;
+                        localStorage.removeItem('kdp_current_user');
+                        if (authScreen) authScreen.classList.remove('hidden');
+                        if (dashboard) dashboard.classList.add('hidden');
+                    }
+                } else {
+                    currentUser = null;
+                    updateKiraAccessMode(true);
+                    if (authScreen) authScreen.classList.remove('hidden');
+                    if (dashboard) dashboard.classList.add('hidden');
+                }
+            } catch (err) {
+                console.error('Inisialisasi autentikasi aplikasi gagal:', err);
+                currentUser = null;
+                if (authScreen) authScreen.classList.remove('hidden');
+                if (dashboard) dashboard.classList.add('hidden');
+            } finally {
+                document.body.classList.remove('auth-initializing');
+                document.body.classList.add('loaded');
             }
-            document.body.classList.add('loaded');
         });
 
         async function saveStateToCloud() {
+            // Cache lokal saja. Data cloud disimpan satu kali pada koleksi sumber masing-masing:
+            // users -> akun, documents -> metadata dokumen, activity_logs -> log.
+            // File fisik -> satu provider hasil handleFileRouting().
             try {
                 if (currentUser) {
                     localStorage.setItem('kdp_current_user', currentUser.username);
@@ -1507,16 +1661,12 @@ function autoCleanupExpiredDocuments() {
                 } else {
                     localStorage.removeItem('kdp_current_user');
                 }
-                localStorage.setItem('kdp_documents_db', JSON.stringify(documents));
+                cacheDocumentsLocally();
                 localStorage.setItem('kdp_users_db', JSON.stringify(usersDatabase));
-
-                await db.collection('app_state').doc('database').set({
-                    documents: documents,
-                    usersDatabase: usersDatabase,
-                    lastUpdated: Date.now()
-                });
+                return true;
             } catch (err) {
-                console.error("Gagal menyimpan ke Firestore:", err);
+                console.error('Gagal memperbarui cache lokal:', err);
+                throw err;
             }
         }
 
@@ -1586,92 +1736,228 @@ function autoCleanupExpiredDocuments() {
         }
 
         async function handleRegister() {
-            const fullname = document.getElementById('reg-fullname').value;
-            const username = document.getElementById('reg-username').value.trim();
+            const fullname = document.getElementById('reg-fullname').value.trim();
+            const email = document.getElementById('reg-email').value.trim().toLowerCase();
+            const username = document.getElementById('reg-username').value.trim().toLowerCase();
             const position = document.getElementById('reg-position').value;
             const inkColor = document.getElementById('reg-ink-color').value;
             const password = document.getElementById('reg-password').value;
             const confirmPass = document.getElementById('reg-confirm-password').value;
+            const parafFile = document.getElementById('reg-paraf-file').files[0];
+            const ttdFile = document.getElementById('reg-ttd-file').files[0];
 
-            if (!fullname || !username || !password) { alert('Isi semua field utama!'); return; }
-            if (password !== confirmPass) { alert('Sandi dan Konfirmasi Sandi tidak cocok!'); return; }
-            if (usersDatabase[username]) { alert('Username sudah terdaftar!'); return; }
+            if (!fullname || !email || !username || !password) { alert('Nama lengkap, email, username, dan sandi wajib diisi.'); return; }
+            if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { alert('Format email tidak valid.'); return; }
+            if (!/^[a-z0-9._-]{3,32}$/.test(username)) { alert('Username harus 3–32 karakter: huruf kecil, angka, titik, garis bawah, atau tanda hubung.'); return; }
+            if (!['staff_kdp', 'kasir'].includes(position)) { alert('Pendaftaran mandiri hanya untuk Staff KDP dan Kasir. Role lainnya dibuat oleh Administrator.'); return; }
+            if (password !== confirmPass) { alert('Sandi dan konfirmasi sandi tidak cocok!'); return; }
+            if (password.length < 8) { alert('Gunakan sandi minimal 8 karakter.'); return; }
 
-            // 1. Ambil file dari input
-const paraffile = document.getElementById('reg-paraf-file').files[0];
-const ttdFile = document.getElementById('reg-ttd-file').files[0];
+            const button = document.querySelector('#register-form-container button[onclick="handleRegister()"]');
+            if (button) { button.disabled = true; button.textContent = 'Menyimpan...'; }
+            let createdAuthUser = null;
+            try {
+                const userRef = db.collection('users').doc(username);
+                const existing = await userRef.get();
+                if (existing.exists || usersDatabase[username]) throw new Error('Username sudah terdaftar!');
 
-// 2. Konversi ke Base64
-const parafPng = await readFileAsBase64(paraffile);
-const ttdPng = await readFileAsBase64(ttdFile);
+                const emailCheck = await db.collection('users').where('email', '==', email).limit(1).get();
+                if (!emailCheck.empty) throw new Error('Email sudah digunakan oleh akun lain.');
 
-// 3. Simpan langsung secara permanen ke Firebase Firestore
-await db.collection('users').doc(username.trim().toLowerCase()).set({
-    fullname: fullname,
-    username: username,
-    password: password,
-    position: position,
-    roleTitle: roleTitlesMap[position],
-    inkColor: inkColor,
-    init: fullname.split(' ').map(n => n[0]).join('').toUpperCase().substring(0, 2),
-    avatarPng: null,
-    parafPng: parafPng,
-    ttdPng: ttdPng,
-    createdAt: firebase.firestore.FieldValue.serverTimestamp()
-});
+                // Buat identitas autentikasi terlebih dahulu; password tidak disimpan di Firestore.
+                const credential = await auth.createUserWithEmailAndPassword(email, password);
+                createdAuthUser = credential.user;
 
-// 4. Perbarui status lokal dan UI
-currentUser = {
-    fullname, username, password, position,
-    roleTitle: roleTitlesMap[position],
-    inkColor, parafPng, ttdPng
-};
+                const parafAsset = parafFile ? await handleFileRouting(parafFile, 'profile/paraf') : null;
+                const ttdAsset = ttdFile ? await handleFileRouting(ttdFile, 'profile/ttd') : null;
+                const user = {
+                    uid: createdAuthUser.uid,
+                    email, fullname, username, position,
+                    roleTitle: roleTitlesMap[position] || position,
+                    inkColor,
+                    init: fullname.split(' ').filter(Boolean).map(n => n[0]).join('').toUpperCase().substring(0, 2),
+                    avatarPng: null,
+                    parafPng: parafAsset ? parafAsset.fileData : null,
+                    parafStorageType: parafAsset ? parafAsset.storageType : null,
+                    parafStoragePath: parafAsset ? parafAsset.storagePath : null,
+                    parafStorageBucket: parafAsset ? parafAsset.storageBucket : null,
+                    parafStoragePublicId: parafAsset ? parafAsset.storagePublicId : null,
+                    parafSizeBytes: parafAsset ? parafAsset.sizeBytes : null,
+                    ttdPng: ttdAsset ? ttdAsset.fileData : null,
+                    ttdStorageType: ttdAsset ? ttdAsset.storageType : null,
+                    ttdStoragePath: ttdAsset ? ttdAsset.storagePath : null,
+                    ttdStorageBucket: ttdAsset ? ttdAsset.storageBucket : null,
+                    ttdStoragePublicId: ttdAsset ? ttdAsset.storagePublicId : null,
+                    ttdSizeBytes: ttdAsset ? ttdAsset.sizeBytes : null,
+                    createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                };
+                await userRef.set(user);
+                usersDatabase[username] = { ...user, createdAt: new Date().toISOString() };
+                delete usersDatabase[username].createdAt?.seconds;
+                localStorage.setItem('kdp_users_db', JSON.stringify(usersDatabase));
+                try { await saveStateToCloud(); } catch (syncErr) { console.warn('app_state tidak tersinkron:', syncErr); }
 
-recordLog(`Mendaftarkan akun baru: ${fullname} (${roleTitlesMap[position]})`);
-document.getElementById('auth-screen').classList.add('hidden');
-document.getElementById('app-dashboard').classList.remove('hidden');
-updateUserDisplay();
-updateStatistics();
-switchMenu('ringkasan');
-showToast('Pendaftaran berhasil! Akun tersimpan di Firestore.');
+                recordLog(`Mendaftarkan akun baru: ${fullname} (${user.roleTitle})`);
+                toggleAuthForm('login');
+                document.getElementById('login-username').value = email;
+                document.getElementById('login-password').value = '';
+                showToast('Pendaftaran berhasil. Silakan masuk.');
+            } catch (err) {
+                console.error('Pendaftaran gagal:', err);
+                // Jika akun Auth sudah dibuat tetapi penulisan profil gagal, jangan menghapus identitas Auth.
+                alert('Pendaftaran gagal: ' + (err.message || err));
+            } finally {
+                if (button) { button.disabled = false; button.textContent = 'Daftar Akun'; }
+            }
         }
 
-       async function handleLogin() {
-    const u = document.getElementById('login-username').value.trim();
-    const p = document.getElementById('login-password').value;
-    
-    if (!u || !p) {
-        alert('Username dan password wajib diisi!');
-        return;
-    }
+        async function handleLogin() {
+            const identifier = document.getElementById('login-username').value.trim();
+            const password = document.getElementById('login-password').value;
+            if (!identifier || !password) { alert('Username/email dan password wajib diisi!'); return; }
 
-    if (usersDatabase && usersDatabase[u]) {
-        if (usersDatabase[u].password === p) {
-            currentUser = usersDatabase[u];
-            
-            // 1. Langsung sembunyikan login & tampilkan dashboard secara instan (Tanpa Lag/Refresh)
-            document.getElementById('auth-screen').classList.add('hidden');
-            document.getElementById('app-dashboard').classList.remove('hidden');
-            
-            updateUIUserDisplay(); 
-            updateStatistics(); 
-            switchMenu('ringkasan');
-            initRealtimeListeners();
-            showToast(`Selamat datang kembali, ${currentUser.fullname}!`);
+            const isAdministratorLogin = identifier.toLowerCase() === 'admin';
+            try {
+                await authPersistenceReady;
+                let profile = null;
+                let profileRef = null;
+                let email = identifier.toLowerCase();
+                let credential;
 
-            // 2. Jalankan penyimpanan ke cloud dan log di latar belakang (Background Process)
-            saveStateToCloud().catch(err => console.error("Background sync error:", err));
-            recordLog(`Login ke sistem: ${currentUser.fullname}`).catch(err => console.error("Log error:", err));
+                if (isAdministratorLogin) {
+                    // Admin tidak menggunakan email pribadi dan tidak melalui registrasi mandiri.
+                    // Akun Auth dibuat satu kali secara manual di Firebase Console.
+                    email = ADMIN_AUTH_EMAIL;
+                    credential = await auth.signInWithEmailAndPassword(email, password);
+                    profileRef = db.collection('users').doc('admin');
+                    const adminSnap = await profileRef.get();
+                    if (!adminSnap.exists) {
+                        await auth.signOut();
+                        alert('Akun Firebase Administrator berhasil dikenali, tetapi profil users/admin belum dibuat di Firestore. Buat dokumen admin sesuai panduan setup.');
+                        return;
+                    }
+                    profile = normalizeCloudUser(adminSnap.data() || {}, 'admin');
+                    if (profile.position !== 'administrator' || (profile.uid && profile.uid !== credential.user.uid)) {
+                        await auth.signOut();
+                        alert('Profil Administrator tidak valid atau UID tidak cocok. Periksa dokumen users/admin di Firestore.');
+                        return;
+                    }
+                    if (!profile.uid) {
+                        await auth.signOut();
+                        alert('UID Administrator belum diisi pada dokumen users/admin. Lengkapi UID dari Firebase Authentication.');
+                        return;
+                    }
+                } else {
+                    if (!identifier.includes('@')) {
+                        profileRef = db.collection('users').doc(identifier.toLowerCase());
+                        const profileSnap = await profileRef.get();
+                        if (!profileSnap.exists) {
+                            alert('Username tidak ditemukan. Periksa kembali username Anda.');
+                            return;
+                        }
+                        profile = normalizeCloudUser(profileSnap.data(), identifier);
+                        email = (profile.email || '').trim().toLowerCase();
+                    } else {
+                        const byEmail = await db.collection('users').where('email', '==', email).limit(1).get();
+                        if (!byEmail.empty) {
+                            const doc = byEmail.docs[0];
+                            profileRef = doc.ref;
+                            profile = normalizeCloudUser(doc.data(), doc.id);
+                        }
+                    }
 
-            document.getElementById('login-username').value = '';
-            document.getElementById('login-password').value = '';
-        } else {
-            alert('Kata sandi yang Anda masukkan salah!');
+                    if (!email || !email.includes('@')) {
+                        alert('Email akun ini belum tersimpan pada profil. Hubungi Administrator untuk melengkapi email sebelum login.');
+                        return;
+                    }
+
+                    try {
+                        credential = await auth.signInWithEmailAndPassword(email, password);
+                    } catch (authError) {
+                        const legacyEligible = profile && profile.password && profile.password === password;
+                        const accountMissing = ['auth/user-not-found', 'auth/invalid-credential'].includes(authError.code);
+
+                        // Migrasi akun lama hanya memakai email yang sudah tercatat pada profil.
+                        if (!legacyEligible || !accountMissing) throw authError;
+
+                        try {
+                            credential = await auth.createUserWithEmailAndPassword(email, password);
+                        } catch (createError) {
+                            if (createError.code === 'auth/email-already-in-use') {
+                                credential = await auth.signInWithEmailAndPassword(email, password);
+                            } else {
+                                throw createError;
+                            }
+                        }
+                        profile.uid = credential.user.uid;
+                        profile.email = email;
+                        delete profile.password;
+                        await profileRef.set({
+                            uid: credential.user.uid,
+                            email,
+                            migratedToFirebaseAuth: true,
+                            password: firebase.firestore.FieldValue.delete(),
+                            authMigratedAt: firebase.firestore.FieldValue.serverTimestamp()
+                        }, { merge: true });
+                        showToast('Akun lama berhasil dihubungkan ke Firebase Authentication.', 3500);
+                    }
+
+                    if (!profile && credential.user) {
+                        const matches = await db.collection('users').where('uid', '==', credential.user.uid).limit(1).get();
+                        if (!matches.empty) {
+                            const doc = matches.docs[0];
+                            profileRef = doc.ref;
+                            profile = normalizeCloudUser(doc.data(), doc.id);
+                        }
+                    }
+
+                    if (!profile || !profileRef) {
+                        await auth.signOut();
+                        alert('Autentikasi berhasil, tetapi profil pengguna tidak ditemukan. Hubungi Administrator.');
+                        return;
+                    }
+                }
+
+                profile.uid = credential.user.uid;
+                profile.email = credential.user.email || email;
+                delete profile.password;
+                await profileRef.set({
+                    uid: profile.uid,
+                    email: profile.email,
+                    lastLoginAt: firebase.firestore.FieldValue.serverTimestamp(),
+                    password: firebase.firestore.FieldValue.delete()
+                }, { merge: true });
+
+                currentUser = profile;
+                updateKiraAccessMode(true);
+                usersDatabase[currentUser.username] = profile;
+                localStorage.setItem('kdp_users_db', JSON.stringify(usersDatabase));
+                localStorage.setItem('kdp_current_user', currentUser.username);
+                document.getElementById('auth-screen').classList.add('hidden');
+                document.getElementById('app-dashboard').classList.remove('hidden');
+                updateUIUserDisplay();
+                updateStatistics();
+                switchMenu('ringkasan');
+                initRealtimeListeners();
+                initChatRealtime();
+                showToast(`Selamat datang, ${currentUser.fullname}!`);
+                recordLog(`Login ke sistem: ${currentUser.fullname}`);
+                document.getElementById('login-username').value = '';
+                document.getElementById('login-password').value = '';
+            } catch (err) {
+                console.error('Login Firebase Authentication gagal:', err);
+                const messages = {
+                    'auth/invalid-credential': 'Username/email atau password salah.',
+                    'auth/user-not-found': isAdministratorLogin
+                        ? 'Akun Administrator belum dibuat di Firebase Authentication. Ikuti langkah setup akun admin.'
+                        : 'Akun Firebase Authentication belum ditemukan. Hubungi Administrator untuk pemeriksaan akun.',
+                    'auth/wrong-password': 'Password salah.',
+                    'auth/invalid-email': 'Identitas email internal Administrator tidak valid. Periksa konfigurasi aplikasi.',
+                    'auth/too-many-requests': 'Terlalu banyak percobaan. Coba beberapa saat lagi.'
+                };
+                alert(messages[err.code] || ('Login gagal: ' + (err.message || err)));
+            }
         }
-    } else { 
-        alert('Username tidak ditemukan di database! Silakan daftar akun terlebih dahulu.'); 
-    }
-}
 
         function updateUIUserDisplay() {
             if (!currentUser) return;
@@ -1752,7 +2038,12 @@ showToast('Pendaftaran berhasil! Akun tersimpan di Firestore.');
         
         async function handleLogout() {
             recordLog(`Logout dari sistem: ${currentUser ? currentUser.fullname : 'Unknown'}`);
+            try { await auth.signOut(); } catch (err) { console.error('Firebase Auth signOut gagal:', err); }
+            stopConversationListener();
+            if (chatPrivateNotifUnsub) { chatPrivateNotifUnsub(); chatPrivateNotifUnsub = null; }
+            if (chatBroadcastNotifUnsub) { chatBroadcastNotifUnsub(); chatBroadcastNotifUnsub = null; }
             currentUser = null;
+            updateKiraAccessMode(true);
             localStorage.removeItem('kdp_current_user');
             localStorage.removeItem('kdp_active_menu');
             document.getElementById('app-dashboard').classList.add('hidden');
@@ -2139,17 +2430,57 @@ showToast('Pendaftaran berhasil! Akun tersimpan di Firestore.');
 
         async function confirmProceedMergedPDF() {
             const blobToUse = currentProceedSource === 'merge' ? utilityLastMergedBlob : utilityLastOrganizedBlob;
-            if (!blobToUse) return;
+            if (!blobToUse) {
+                alert('File PDF hasil proses tidak ditemukan. Silakan ulangi proses.');
+                return;
+            }
+            if (!currentUser || !auth.currentUser) {
+                alert('Sesi login tidak tersedia. Silakan login kembali.');
+                return;
+            }
 
             const customTitle = document.getElementById('proceed-doc-title').value.trim();
-            const docTitle = customTitle !== '' ? customTitle : `Custom Document (${new Date().toLocaleDateString()})`;
+            const docTitle = customTitle !== '' ? customTitle : `Dokumen Utilitas (${new Date().toLocaleDateString('id-ID')})`;
             const docType = document.getElementById('proceed-doc-type').value;
+            const confirmButton = document.querySelector('#proceed-merged-modal button[onclick="confirmProceedMergedPDF()"]');
+            const originalButtonHTML = confirmButton ? confirmButton.innerHTML : '';
+            let uploadedAsset = null;
+            let firestoreSaved = false;
+
+            if (confirmButton) {
+                confirmButton.disabled = true;
+                confirmButton.innerHTML = '⏳ Mengunggah & menyimpan...';
+            }
 
             try {
-                showToast('Meneruskan file ke modul approval...', 1500);
-                const arrayBuffer = await blobToUse.arrayBuffer();
-                const dataUrl = arrayBufferToBase64DataUrl(arrayBuffer, 'application/pdf');
-                
+                showToast('Menyiapkan PDF final untuk disimpan...', 2500);
+
+                // Buat File dari hasil akhir (gabungan atau susunan halaman).
+                // File final ini yang menjadi dasar penentuan provider storage.
+                const safeBaseName = docTitle
+                    .replace(/[\\/:*?"<>|]+/g, '-')
+                    .replace(/\s+/g, ' ')
+                    .trim()
+                    .slice(0, 100) || 'Dokumen-Utilitas';
+                const finalFile = new File(
+                    [blobToUse],
+                    `${safeBaseName}.pdf`,
+                    { type: 'application/pdf', lastModified: Date.now() }
+                );
+
+                if (finalFile.size < 5) throw new Error('File PDF final kosong atau tidak valid.');
+
+                showToast(`Mengunggah PDF final (${(finalFile.size / 1024 / 1024).toFixed(2)} MB)...`, 4000);
+                const routingResult = await handleFileRouting(finalFile, 'documents');
+
+                uploadedAsset = {
+                    storageType: routingResult.storageType,
+                    storagePath: routingResult.storagePath || null,
+                    storageBucket: routingResult.storageBucket || null,
+                    publicId: routingResult.storagePublicId || null,
+                    url: routingResult.fileData
+                };
+
                 let initialStatus = 'Tahap 1: Menunggu 2 Staff KDP TTD';
                 if (docType === 'kasir') initialStatus = 'Tahap 1: Menunggu TTD Kasir';
                 else if (docType === 'admkdp') initialStatus = 'Tahap 1: Menunggu TTD Admin KDP';
@@ -2157,32 +2488,70 @@ showToast('Pendaftaran berhasil! Akun tersimpan di Firestore.');
                 else if (docType === 'lain_lain') initialStatus = 'Menunggu Review Staff KDP (Opsional) atau KDP Kabag';
 
                 const nowTime = Date.now();
-                const uniqueDocId = nowTime + '_' + Math.random().toString(36).substr(2, 9);
-                documents.push({
-                    id: uniqueDocId, title: docTitle, docType: docType,
-                    uploader: `${currentUser.fullname} (${currentUser.roleTitle})`,
-                    status: initialStatus, step: 1,
-                    fileData: dataUrl, comments: [], approvedUsers: [],
-                    approvedStaffList: [], 
-                    kabagHasVerified: false, 
+                const uniqueDocId = `${nowTime}_${Math.random().toString(36).slice(2, 11)}`;
+                const newDoc = {
+                    id: uniqueDocId,
+                    title: docTitle,
+                    docType: docType,
+                    uploader: `${currentUser.fullname || currentUser.username} (${currentUser.roleTitle || roleTitlesMap[currentUser.position] || 'User'})`,
+                    status: initialStatus,
+                    step: 1,
+                    fileData: routingResult.fileData,
+                    storageType: routingResult.storageType,
+                    storagePath: routingResult.storagePath || null,
+                    storageBucket: routingResult.storageBucket || null,
+                    storagePublicId: routingResult.storagePublicId || null,
+                    fileSizeMB: routingResult.sizeMB,
+                    fileSizeBytes: routingResult.sizeBytes,
+                    sourceUtility: currentProceedSource === 'merge' ? 'merge_pdf' : 'organize_pdf',
+                    comments: [],
+                    approvedUsers: [],
+                    approvedStaffList: [],
+                    kabagHasVerified: false,
                     isCompleted: false,
                     createdAt: nowTime,
                     lastUpdated: nowTime
-                });
-                
-                closeProceedMergedModal();
-                await saveStateToCloud();
-                recordLog(`Mengajukan dokumen utilitas baru: ${docTitle}`);
-                
-                // Kirim notifikasi ke user yang relevan
+                };
+
+                // Urutan wajib: file cloud berhasil diunggah, baru metadata dicatat di Firestore.
+                await db.collection('documents').doc(uniqueDocId).set(newDoc);
+                firestoreSaved = true;
+
+                // Update UI lokal setelah Firestore mengonfirmasi penyimpanan.
+                documents = [newDoc, ...(documents || []).filter(item => item.id !== uniqueDocId)];
+                documents.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+                cacheDocumentsLocally();
+
+                await recordLog(`Mengajukan dokumen utilitas baru (${routingResult.storageType.toUpperCase()}): ${docTitle}`);
                 notifyNextApprovers(docType, 1, docTitle, uniqueDocId);
 
+                closeProceedMergedModal();
                 updateStatistics();
                 switchMenu('dokumen-saya');
-                showToast('Berkas berhasil diteruskan untuk Tanda Tangan / Approval!');
-            } catch(e) {
-                console.error(e);
-                alert('Gagal meneruskan berkas ke approval.');
+                showToast(`Dokumen berhasil disimpan di ${routingResult.storageType.toUpperCase()} dan diteruskan ke approval!`, 5000);
+            } catch (e) {
+                console.error('Gagal menyimpan hasil PDF utilitas ke approval:', e);
+
+                // Jika upload berhasil tetapi pencatatan Firestore gagal, bersihkan file yatim.
+                if (uploadedAsset && !firestoreSaved) {
+                    try {
+                        await deleteCloudAsset(uploadedAsset);
+                    } catch (cleanupError) {
+                        console.error('File hasil upload gagal dibersihkan setelah penyimpanan Firestore gagal:', cleanupError);
+                        alert(
+                            `Dokumen gagal dicatat ke database. File sudah terunggah tetapi penghapusan otomatis gagal. ` +
+                            `Mohon hubungi administrator untuk pemeriksaan. Detail: ${e.message}`
+                        );
+                        return;
+                    }
+                }
+
+                alert(`Gagal meneruskan PDF ke approval: ${e.message || e}`);
+            } finally {
+                if (confirmButton) {
+                    confirmButton.disabled = false;
+                    confirmButton.innerHTML = originalButtonHTML;
+                }
             }
         }
 
@@ -2269,7 +2638,11 @@ showToast('Pendaftaran berhasil! Akun tersimpan di Firestore.');
             currentUser.roleTitle = roleTitlesMap[position] || position;
             currentUser.init = fullname.split(' ').map(n=>n[0]).join('').toUpperCase().substring(0,2);
 
+            delete currentUser.password;
             usersDatabase[currentUser.username] = currentUser;
+            await db.collection('users').doc(currentUser.username).set({
+                ...currentUser, updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+            }, { merge: true });
             await saveStateToCloud();
             recordLog(`Memperbarui profil nama/jabatan: ${fullname}`);
             updateUIUserDisplay();
@@ -2308,95 +2681,145 @@ function switchChatTab(tab) {
     }
 }
 
-// Fungsi sederhana untuk mengirim pesan antar user
-function sendUserMessage() {
-    const inputField = document.getElementById('user-chat-input');
-    const messageContainer = document.getElementById('user-chat-messages');
-    const userText = inputField.value.trim();
-
-    if (!userText) return;
-
-    const senderName = currentUser ? currentUser.fullname || currentUser.username : "Pengguna";
-
-    messageContainer.innerHTML += `
-        <div style="background: #1e3d2f; color: #e0f2fe; padding: 8px; border-radius: 8px; max-width: 85%; align-self: flex-end; font-size: 11px;">
-            <strong>${senderName}:</strong><br>${userText}
-        </div>
-    `;
-    inputField.value = '';
-    messageContainer.scrollTop = messageContainer.scrollHeight;
-}
-        async function uploadSpecificAsset(type) {
-    if (!currentUser) return;
-
-    if (type === 'avatar') {
-        // 1. Ambil input file khusus avatar dengan benar
-        const fileInput = document.getElementById('profile-avatar-file');
-        if (!fileInput || fileInput.files.length === 0) {
-            alert('Pilih file foto profil terlebih dahulu!');
-            return;
+// Fungsi sendUserMessage ditangani oleh modul chat real-time di bagian akhir dokumen.
+        async function migrateLegacyProfileImageField(fieldName, category) {
+            const value = currentUser && currentUser[fieldName];
+            if (typeof value !== 'string' || !value.startsWith('data:image/')) return;
+            const response = await fetch(value);
+            const blob = await response.blob();
+            const extension = blob.type.includes('png') ? 'png' : 'jpg';
+            let file = new File([blob], `${fieldName}.${extension}`, { type: blob.type || 'image/jpeg' });
+            if (fieldName === 'avatarPng') file = await compressAvatarImage(file);
+            const result = await handleFileRouting(file, category);
+            setProfileAssetMetadata(currentUser, fieldName, result);
         }
-        
-        const file = fileInput.files[0];
-        const fileExt = file.name.split('.').pop();
-        const fileName = `${currentUser.username}_${Date.now()}.${fileExt}`;
-        const filePath = `${fileName}`;
 
-        // 2. Upload file asli ke Supabase Storage (Bucket: avatars)
-        const { data, error } = await supabase.storage
-            .from('avatars')
-            .upload(filePath, file);
+        async function uploadSpecificAsset(type) {
+            if (!currentUser) {
+                alert('Sesi pengguna tidak ditemukan. Silakan login kembali.');
+                return;
+            }
 
-        if (error) throw error;
+            const button = document.querySelector(`button[onclick="uploadSpecificAsset('${type}')"]`);
+            const originalText = button ? button.textContent : 'Simpan';
+            const setStatus = message => { if (button) button.textContent = message; };
+            const withTimeout = (promise, ms, label) => Promise.race([
+                promise,
+                new Promise((_, reject) => setTimeout(
+                    () => reject(new Error(`${label} melebihi ${Math.round(ms / 1000)} detik.`)), ms
+                ))
+            ]);
 
-        // 3. Ambil Public URL dari file yang di-upload
-        const { data: publicURLData } = supabase.storage
-            .from('avatars')
-            .getPublicUrl(filePath);
+            if (button) { button.disabled = true; setStatus('Menyiapkan...'); }
 
-        currentUser.avatarPng = publicURLData.publicUrl;
-        showToast('Foto profil berhasil diunggah ke Supabase!');
+            try {
+                let assetResult = null;
+                if (type === 'avatar' || type === 'paraf' || type === 'ttd') {
+                    const inputId = type === 'avatar' ? 'profile-avatar-file' :
+                                    type === 'paraf' ? 'profile-paraf-file' : 'profile-ttd-file';
+                    const input = document.getElementById(inputId);
+                    const originalFile = input?.files?.[0];
+                    if (!originalFile) throw new Error('Pilih file gambar terlebih dahulu.');
+                    if (!originalFile.type.startsWith('image/')) throw new Error('File harus berupa gambar.');
 
-    } else if (type === 'ink') {
-        const colorVal = document.getElementById('profile-edit-ink-color').value;
-        currentUser.inkColor = colorVal;
-        showToast('Warna tinta berhasil diperbarui!');
-    } else if (type === 'paraf') {
-        const file = document.getElementById('profile-paraf-file').files[0];
-        if (!file) { alert('Pilih file gambar paraf terlebih dahulu!'); return; }
-        currentUser.parafPng = await readFileAsBase64(file);
-        showToast('Aset Paraf berhasil diganti!');
-    } else if (type === 'ttd') {
-        const file = document.getElementById('profile-td-file') || document.getElementById('profile-ttd-file').files[0];
-        if (!file) { alert('Pilih file gambar TTD terlebih dahulu!'); return; }
-        currentUser.ttdPng = await readFileAsBase64(file);
-        showToast('Aset TTD berhasil diganti!');
-    }
+                    let fileToUpload = originalFile;
+                    if (type === 'avatar') {
+                        setStatus('Mengompres foto...');
+                        fileToUpload = await withTimeout(compressAvatarImage(originalFile), 20000, 'Kompresi avatar');
+                    }
 
-    // Simpan perubahan ke database & cloud
-    usersDatabase[currentUser.username] = currentUser;
-    await saveStateToCloud();
-    recordLog(`Memperbarui aset profil (${type})`);
-    updateUIUserDisplay();
-    renderProfileForm();
-}
+                    const category = type === 'avatar' ? 'profile/avatars' :
+                                     type === 'paraf' ? 'profile/paraf' : 'profile/ttd';
+
+                    setStatus(`Mengunggah ${(fileToUpload.size / 1048576).toFixed(2)} MB...`);
+                    assetResult = await withTimeout(handleFileRouting(fileToUpload, category), 60000, 'Upload aset profil');
+
+                    // Simpan URL dan seluruh metadata provider di Firestore, bukan Base64.
+                    const fieldName = type === 'avatar' ? 'avatarPng' : type === 'paraf' ? 'parafPng' : 'ttdPng';
+                    const oldProfileAsset = getProfileAsset(currentUser, fieldName);
+                    setProfileAssetMetadata(currentUser, fieldName, assetResult);
+                    assetResult._replacedAsset = oldProfileAsset;
+                } else if (type === 'ink') {
+                    currentUser.inkColor = document.getElementById('profile-edit-ink-color').value;
+                } else {
+                    throw new Error('Jenis aset profil tidak dikenal.');
+                }
+
+                // Migrasikan aset Base64 lama agar dokumen Firestore hanya menyimpan URL + metadata.
+                setStatus('Memeriksa aset profil lama...');
+                await migrateLegacyProfileImageField('avatarPng', 'profile/avatars');
+                await migrateLegacyProfileImageField('parafPng', 'profile/paraf');
+                await migrateLegacyProfileImageField('ttdPng', 'profile/ttd');
+
+                delete currentUser.password;
+                usersDatabase[currentUser.username] = currentUser;
+                const userRecord = JSON.parse(JSON.stringify(currentUser));
+
+                setStatus('Menyimpan metadata akun...');
+                await withTimeout(
+                    db.collection('users').doc(currentUser.username).set({
+                        ...userRecord,
+                        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                    }, { merge: true }),
+                    15000,
+                    'Penyimpanan metadata akun'
+                );
+
+                // Setelah metadata baru tersimpan, hapus objek lama bila lokasinya diketahui.
+                if (assetResult?._replacedAsset) {
+                    try { await deleteReplacedProfileAsset(assetResult._replacedAsset, assetResult.fileData); }
+                    catch (cleanupErr) { console.warn('Aset profil lama belum berhasil dihapus:', cleanupErr); }
+                }
+
+                // Hanya cache metadata+URL; file fisik tidak dimasukkan ke Firestore/localStorage.
+                localStorage.setItem('kdp_users_db', JSON.stringify(usersDatabase));
+                localStorage.setItem('kdp_current_user', currentUser.username);
+
+                recordLog(`Memperbarui aset profil (${type})`);
+                updateUIUserDisplay();
+                renderProfileForm();
+                if (type !== 'ink') {
+                    const inputId = type === 'avatar' ? 'profile-avatar-file' :
+                                    type === 'paraf' ? 'profile-paraf-file' : 'profile-ttd-file';
+                    const input = document.getElementById(inputId);
+                    if (input) input.value = '';
+                }
+
+                const providerLabel = assetResult
+                    ? `${assetResult.storageType} (${assetResult.sizeMB} MB)`
+                    : 'Firestore metadata';
+                showToast(`Berhasil disimpan: ${providerLabel}`);
+            } catch (err) {
+                console.error(`Gagal menyimpan aset profil (${type}):`, err);
+                alert(`Gagal menyimpan perubahan profil: ${err.code ? err.code + ' — ' : ''}${err.message || err}`);
+            } finally {
+                if (button) { button.disabled = false; button.textContent = originalText; }
+            }
+        }
 
         async function saveNewPassword() {
-            if (!currentUser) return;
+            if (!currentUser || !auth.currentUser) { alert('Sesi Firebase Authentication tidak ditemukan. Silakan login kembali.'); return; }
             const newPassword = document.getElementById('profile-edit-password').value;
-            if (!newPassword) { alert('Masukkan sandi baru terlebih dahulu!'); return; }
-
-            currentUser.password = newPassword;
-            usersDatabase[currentUser.username] = currentUser;
-            await saveStateToCloud();
-            recordLog('Memperbarui kata sandi akun');
-            renderProfileForm();
-            showToast('Kata sandi berhasil diperbarui!');
+            if (!newPassword || newPassword.length < 8) { alert('Masukkan sandi baru minimal 8 karakter!'); return; }
+            try {
+                await auth.currentUser.updatePassword(newPassword);
+                recordLog('Memperbarui kata sandi melalui Firebase Authentication');
+                document.getElementById('profile-edit-password').value = '';
+                showToast('Kata sandi Firebase Authentication berhasil diperbarui!');
+            } catch (err) {
+                console.error('Gagal memperbarui password Auth:', err);
+                if (err.code === 'auth/requires-recent-login') {
+                    alert('Demi keamanan, silakan logout dan login kembali sebelum mengganti password.');
+                } else {
+                    alert('Gagal memperbarui password: ' + (err.message || err));
+                }
+            }
         }
 
         function openAddUserScreen() {
             document.getElementById('new-user-fullname').value = '';
             document.getElementById('new-user-username').value = '';
+            document.getElementById('new-user-email').value = '';
             document.getElementById('new-user-password').value = '';
             document.getElementById('new-user-confirm-password').value = '';
             document.getElementById('new-user-ink-color').value = '#2563eb';
@@ -2406,34 +2829,72 @@ function sendUserMessage() {
         }
 
         async function handleAdminCreateUser() {
-            const fullname = document.getElementById('new-user-fullname').value;
-            const username = document.getElementById('new-user-username').value.trim();
+            const fullname = document.getElementById('new-user-fullname').value.trim();
+            const email = document.getElementById('new-user-email').value.trim().toLowerCase();
+            const username = document.getElementById('new-user-username').value.trim().toLowerCase();
             const position = document.getElementById('new-user-position').value;
             const inkColor = document.getElementById('new-user-ink-color').value;
             const password = document.getElementById('new-user-password').value;
             const confirmPass = document.getElementById('new-user-confirm-password').value;
 
-            if (!fullname || !username || !password) { alert('Isi semua field utama!'); return; }
-            if (password !== confirmPass) { alert('Sandi dan Konfirmasi Sandi tidak cocok!'); return; }
-            if (usersDatabase[username]) { alert('Username sudah terdaftar!'); return; }
+            if (!fullname || !email || !username || !password) { alert('Nama, email, username, dan password wajib diisi.'); return; }
+            if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { alert('Format email tidak valid.'); return; }
+            if (password !== confirmPass || password.length < 8) { alert('Password minimal 8 karakter dan harus sama dengan konfirmasi.'); return; }
+            if (!/^[a-z0-9._-]{3,32}$/.test(username)) { alert('Format username tidak valid.'); return; }
 
-            const parafFile = document.getElementById('new-user-paraf-file').files[0];
-            const ttdFile = document.getElementById('new-user-ttd-file').files[0];
+            const userRef = db.collection('users').doc(username);
+            const existingCloudUser = await userRef.get();
+            if (existingCloudUser.exists || usersDatabase[username]) { alert('Username sudah terdaftar!'); return; }
+            const emailCheck = await db.collection('users').where('email', '==', email).limit(1).get();
+            if (!emailCheck.empty) { alert('Email sudah digunakan.'); return; }
 
-            const parafPng = await readFileAsBase64(parafFile);
-            const ttdPng = await readFileAsBase64(ttdFile);
+            let secondaryApp;
+            try {
+                // App sekunder mencegah sesi Administrator tergantikan saat membuat akun baru.
+                const appName = 'KDP-User-Creation-' + Date.now();
+                secondaryApp = firebase.initializeApp(firebaseConfig, appName);
+                const secondaryAuth = secondaryApp.auth();
+                const credential = await secondaryAuth.createUserWithEmailAndPassword(email, password);
 
-            usersDatabase[username] = {
-                fullname, username, password, position,
-                roleTitle: roleTitlesMap[position],
-                inkColor, init: fullname.split(' ').map(n=>n[0]).join('').toUpperCase().substring(0,2),
-                avatarPng: null, parafPng, ttdPng
-            };
+                const parafFile = document.getElementById('new-user-paraf-file').files[0];
+                const ttdFile = document.getElementById('new-user-ttd-file').files[0];
+                const parafAsset = parafFile ? await handleFileRouting(parafFile, 'profile/paraf') : null;
+                const ttdAsset = ttdFile ? await handleFileRouting(ttdFile, 'profile/ttd') : null;
 
-            await saveStateToCloud();
-            recordLog(`Administrator membuat user baru: ${fullname} (${username})`);
-            showToast('User baru berhasil didaftarkan.');
-            switchMenu('admin-panel');
+                const newUser = {
+                    uid: credential.user.uid, email, fullname, username, position,
+                    roleTitle: roleTitlesMap[position] || position,
+                    inkColor, init: fullname.split(' ').map(n=>n[0]).join('').toUpperCase().substring(0,2),
+                    avatarPng: null,
+                    parafPng: parafAsset?.fileData || null,
+                    parafStorageType: parafAsset?.storageType || null,
+                    parafStoragePath: parafAsset?.storagePath || null,
+                    parafStorageBucket: parafAsset?.storageBucket || null,
+                    parafStoragePublicId: parafAsset?.storagePublicId || null,
+                    parafSizeBytes: parafAsset?.sizeBytes || null,
+                    ttdPng: ttdAsset?.fileData || null,
+                    ttdStorageType: ttdAsset?.storageType || null,
+                    ttdStoragePath: ttdAsset?.storagePath || null,
+                    ttdStorageBucket: ttdAsset?.storageBucket || null,
+                    ttdStoragePublicId: ttdAsset?.storagePublicId || null,
+                    ttdSizeBytes: ttdAsset?.sizeBytes || null,
+                    createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                };
+                await userRef.set(newUser);
+                usersDatabase[username] = { ...newUser, createdAt: new Date().toISOString() };
+                await saveStateToCloud();
+                recordLog(`Administrator membuat user baru: ${fullname} (${username})`);
+                showToast('User baru berhasil dibuat.');
+                switchMenu('admin-panel');
+                await secondaryAuth.signOut();
+            } catch (err) {
+                console.error('Gagal membuat user Firebase:', err);
+                alert('Pembuatan user gagal: ' + (err.message || err));
+            } finally {
+                if (secondaryApp) {
+                    try { await secondaryApp.delete(); } catch (_) {}
+                }
+            }
         }
 
         function openEditUserScreen(username) {
@@ -2445,7 +2906,6 @@ function sendUserMessage() {
             document.getElementById('edit-user-username').value = u.username;
             document.getElementById('edit-user-position').value = u.position;
             document.getElementById('edit-user-ink-color').value = u.inkColor || '#2563eb';
-            document.getElementById('edit-user-password').value = '';
             document.getElementById('edit-user-paraf-file').value = '';
             document.getElementById('edit-user-ttd-file').value = '';
             
@@ -2459,7 +2919,6 @@ function sendUserMessage() {
             const fullname = document.getElementById('edit-user-fullname').value;
             const position = document.getElementById('edit-user-position').value;
             const inkColor = document.getElementById('edit-user-ink-color').value;
-            const newPassword = document.getElementById('edit-user-password').value;
 
             if(!fullname) { alert('Nama lengkap wajib diisi!'); return; }
 
@@ -2468,43 +2927,75 @@ function sendUserMessage() {
             u.roleTitle = roleTitlesMap[position];
             u.inkColor = inkColor;
             u.init = fullname.split(' ').map(n=>n[0]).join('').toUpperCase().substring(0,2);
-            if(newPassword) u.password = newPassword;
 
             const parafFile = document.getElementById('edit-user-paraf-file').files[0];
             const ttdFile = document.getElementById('edit-user-ttd-file').files[0];
 
-            if(parafFile) u.parafPng = await readFileAsBase64(parafFile);
-            if(ttdFile) u.ttdPng = await readFileAsBase64(ttdFile);
+            const replacedProfileAssets = [];
+            if(parafFile) {
+                const oldAsset = getProfileAsset(u, 'parafPng');
+                const asset = await handleFileRouting(parafFile, 'profile/paraf');
+                setProfileAssetMetadata(u, 'parafPng', asset);
+                if (oldAsset) replacedProfileAssets.push({ oldAsset, newUrl: asset.fileData });
+            }
+            if(ttdFile) {
+                const oldAsset = getProfileAsset(u, 'ttdPng');
+                const asset = await handleFileRouting(ttdFile, 'profile/ttd');
+                setProfileAssetMetadata(u, 'ttdPng', asset);
+                if (oldAsset) replacedProfileAssets.push({ oldAsset, newUrl: asset.fileData });
+            }
 
+            // Persistir user record terpisah; app_state hanya berisi metadata kecil.
+            await db.collection('users').doc(u.username).set({
+                ...JSON.parse(JSON.stringify(u)),
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+            }, { merge: true });
+            for (const item of replacedProfileAssets) {
+                try { await deleteReplacedProfileAsset(item.oldAsset, item.newUrl); }
+                catch (cleanupErr) { console.warn('Aset profil lama belum berhasil dihapus:', cleanupErr); }
+            }
             if(currentUser.username === u.username) {
                 currentUser = u;
                 updateUIUserDisplay();
             }
-
             await saveStateToCloud();
             recordLog(`Memperbarui data user: ${u.username}`);
             showToast('Data user berhasil diperbarui.');
             switchMenu('admin-panel');
         }
 
-        function renderAdminUsersTable() {
+        async function renderAdminUsersTable() {
             const tbody = document.getElementById('admin-users-table');
             if (!tbody) return;
+            tbody.innerHTML = `<tr><td colspan="5" class="py-4 text-center text-sub">Memuat data user...</td></tr>`;
+
+            // Koleksi users adalah sumber utama akun; gabungkan dengan data lama.
+            try {
+                const snapshot = await db.collection('users').get();
+                snapshot.forEach(doc => {
+                    const user = normalizeCloudUser(doc.data() || {}, doc.id);
+                    if (user.username) usersDatabase[user.username] = user;
+                });
+                localStorage.setItem('kdp_users_db', JSON.stringify(usersDatabase));
+            } catch (err) {
+                console.error('Gagal memuat daftar user dari Firestore:', err);
+                tbody.innerHTML = `<tr><td colspan="5" class="py-4 text-center text-rose-400">Gagal memuat user dari server. Periksa koneksi/aturan Firestore.</td></tr>`;
+                return;
+            }
+
             tbody.innerHTML = '';
-            
-            const users = Object.values(usersDatabase);
+            const users = Object.values(usersDatabase).sort((a, b) => (a.username || '').localeCompare(b.username || ''));
             if (!users.length) {
                 tbody.innerHTML = `<tr><td colspan="5" class="py-4 text-center text-sub">Tidak ada user terdaftar.</td></tr>`;
                 return;
             }
-
             users.forEach(u => {
                 const inkCircle = `<div class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full inline-block border border-panel" style="background-color: ${u.inkColor || '#2563eb'}"></span><span class="font-mono text-[10px]">${u.inkColor || '#2563eb'}</span></div>`;
                 tbody.innerHTML += `
                     <tr class="border-b border-panel">
-                        <td class="py-2.5 px-3 font-medium text-heading">${u.fullname}</td>
-                        <td class="py-2.5 px-3 font-mono text-premium-gold">${u.username}</td>
-                        <td class="py-2.5 px-3 uppercase">${roleTitlesMap[u.position] || u.position}</td>
+                        <td class="py-2.5 px-3 font-medium text-heading">${u.fullname || '-'}</td>
+                        <td class="py-2.5 px-3 font-mono text-premium-gold">${u.username || '-'}</td>
+                        <td class="py-2.5 px-3 uppercase">${roleTitlesMap[u.position] || u.position || '-'}</td>
                         <td class="py-2.5 px-3">${inkCircle}</td>
                         <td class="py-2.5 px-3 text-right space-x-1.5">
                             <button type="button" onclick="openEditUserScreen('${u.username}')" class="bg-blue-600 hover:bg-blue-500 text-white px-2.5 py-1 rounded text-[10px] font-bold">Edit</button>
@@ -2516,8 +3007,15 @@ function sendUserMessage() {
 
         async function deleteUser(username) {
             if (username === 'admin') { alert('Administrator utama tidak dapat dihapus!'); return; }
-            delete usersDatabase[username];
-            await saveStateToCloud();
+            try {
+                await db.collection('users').doc(username.toLowerCase()).delete();
+                delete usersDatabase[username];
+                await saveStateToCloud();
+            } catch (err) {
+                console.error('Gagal menghapus user dari Firestore:', err);
+                alert('User gagal dihapus dari server: ' + (err.message || err));
+                return;
+            }
             recordLog(`Menghapus user: ${username}`);
             renderAdminUsersTable();
             showToast('User berhasil dihapus.');
@@ -2972,91 +3470,155 @@ function sendUserMessage() {
         }
         function closeUploadModal() { document.getElementById('upload-modal').classList.add('hidden'); }
 // ==========================================
-// TAHAP 1: HYBRID STORAGE ROUTING FUNCTION
+// KDP DOKU SIGN STORAGE ROUTING (TANPA FIREBASE STORAGE)
+// Firebase: Authentication/Firestore untuk akun dan metadata.
+// Cloudinary: sampai 5 MiB.
+// Cloudflare R2: di atas 5 sampai 15 MiB.
+// Supabase: di atas 15 MiB. Penghapusan ketiga provider dilakukan melalui Worker.
+// Satu file hanya diunggah ke SATU provider; tidak ada salinan ganda.
 // ==========================================
+// Set URL Cloudflare Worker backend di sini setelah deploy.
+const KDP_STORAGE_DELETE_ENDPOINT = 'https://kdp-storage-delete.kdpnbk.workers.dev';
+const KDP_STORAGE_LIMITS = {
+    cloudinary: 5 * 1024 * 1024,  // sampai 5 MiB: Cloudinary
+    r2: 15 * 1024 * 1024          // >5 sampai 15 MiB: Cloudflare R2; di atas 15 MiB: Supabase
+};
 
-// Helper Upload ke Cloudinary (Untuk file > 1MB dan <= 10MB)
-async function uploadToCloudinary(file) {
-    const cloudName = "blml8056";       // Sesuai Cloud Name Anda
-    const uploadPreset = "kdp_preset";   // Sesuai nama preset yang Anda buat
+function makeStorageFileName(file, category) {
+    const safeName = String(file.name || `${category}.bin`).replace(/[^a-zA-Z0-9._-]/g, '_');
+    return `${Date.now()}_${Math.random().toString(36).slice(2, 10)}_${safeName}`;
+}
 
+async function uploadToCloudinary(file, category = 'documents') {
+    if (!file || !(file instanceof Blob)) throw new Error('File Cloudinary tidak valid.');
+    const cloudName = "blml8056";
+    const uploadPreset = "kdp_preset";
     const formData = new FormData();
-    formData.append("file", file);
+    formData.append("file", file, makeStorageFileName(file, category));
     formData.append("upload_preset", uploadPreset);
-
-    try {
-        const response = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/raw/upload`, {
-            method: "POST",
-            body: formData
-        });
-        
-        const data = await response.json();
-        if (data.secure_url) {
-            return data.secure_url; 
-        } else {
-            throw new Error(data.error?.message || "Gagal mengunggah ke Cloudinary");
-        }
-    } catch (error) {
-        console.error("Cloudinary Error:", error);
-        throw error;
+    formData.append("folder", `kdp_doku_sign/${category}`);
+    const response = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/raw/upload`, {
+        method: "POST", body: formData
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.secure_url) {
+        throw new Error(data.error?.message || `Gagal mengunggah ${category} ke Cloudinary.`);
     }
+    return { url:data.secure_url, publicId:data.public_id };
 }
 
-// Helper Upload ke Supabase Storage (Untuk file > 10MB)
-async function uploadToSupabase(file) {
-    const SUPABASE_URL = "https://nzoffzewqizvaqtkvojf.supabase.co"; // URL Project Supabase Anda
-    const SUPABASE_ANON_KEY = "sb_publishable_FYD7s2o0DCVO6xI17Kkd6w_DD35zv0a"; // Salin Publishable Key Anda dari gambar
-    const bucketName = "documents-bucket";                   // Nama bucket
-
-    const fileName = `${Date.now()}_${file.name}`;
-    const filePath = `${fileName}`;
-
-    try {
-        const response = await fetch(`${SUPABASE_URL}/storage/v1/object/${bucketName}/${filePath}`, {
-            method: "POST",
-            headers: {
-                "apikey": SUPABASE_ANON_KEY,
-                "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
-                "Content-Type": file.type
-            },
-            body: file
-        });
-
-        if (response.ok) {
-            return `${SUPABASE_URL}/storage/v1/object/public/${bucketName}/${filePath}`;
-        } else {
-            const errData = await response.json();
-            throw new Error(errData.message || "Gagal mengunggah ke Supabase Storage");
-        }
-    } catch (error) {
-        console.error("Supabase Error:", error);
-        throw error;
+async function uploadToSupabase(file, category = 'documents') {
+    if (typeof supabaseClient === 'undefined' || !supabaseClient) {
+        throw new Error('Supabase belum terhubung.');
     }
+    const normalizedCategory = String(category || 'documents').split('/').filter(Boolean).join('/');
+    const isProfileAsset = normalizedCategory.startsWith('profile/') || normalizedCategory.startsWith('avatars/');
+    const bucketName = isProfileAsset ? 'avatars' : 'documents-bucket';
+    const folderName = normalizedCategory.startsWith('profile/')
+        ? 'avatars/' + normalizedCategory.slice('profile/'.length)
+        : normalizedCategory;
+    const filePath = `${folderName}/${makeStorageFileName(file, category)}`;
+
+    const { data, error } = await supabaseClient.storage.from(bucketName).upload(filePath, file, {
+        contentType: file.type || 'application/octet-stream', upsert: false
+    });
+    if (error) throw new Error(`Supabase bucket "${bucketName}": ${error.message || 'upload gagal'}`);
+
+    const { data: publicData } = supabaseClient.storage.from(bucketName).getPublicUrl(data.path);
+    if (!publicData?.publicUrl) {
+        throw new Error(`URL dari bucket "${bucketName}" tidak tersedia. Periksa konfigurasi bucket dan policy akses.`);
+    }
+    return { url:publicData.publicUrl, path:data.path, bucket:bucketName };
 }
 
-// Fungsi Utama Routing Berdasarkan Ukuran File
-async function handleFileRouting(file) {
-    const fileSizeMB = file.size / (1024 * 1024); 
-    let storageType = '';
-    let fileDataUrl = '';
+async function uploadToR2(file, category = 'documents') {
+    if (!file || !(file instanceof Blob)) throw new Error('File R2 tidak valid.');
+    if (!auth.currentUser) throw new Error('Sesi login tidak tersedia.');
+    const token = await auth.currentUser.getIdToken();
+    const formData = new FormData();
+    formData.append('file', file, makeStorageFileName(file, category));
+    formData.append('category', String(category || 'documents'));
+    const response = await fetch(`${KDP_STORAGE_DELETE_ENDPOINT}/upload`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` },
+        body: formData
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || !result.success || !result.url || !(result.storagePath || result.key)) {
+        throw new Error(result.error || 'Gagal mengunggah file ke Cloudflare R2.');
+    }
+    return { url: result.url, path: result.storagePath || result.key, bucket: 'kdp-doku-sign' };
+}
 
-    if (fileSizeMB <= 0.5) {
-        storageType = 'firestore';
-        fileDataUrl = await readFileAsBase64(file);
-    } else if (fileSizeMB > 0.5 && fileSizeMB <= 10) {
+async function handleFileRouting(file, category = 'documents') {
+    if (!file || typeof file.size !== 'number') throw new Error('File tidak ditemukan atau tidak valid.');
+    const size = file.size;
+    let storageType, fileData, storagePath = null, storageBucket = null, storagePublicId = null;
+
+    // Satu file hanya masuk ke satu provider, berdasarkan ukuran file final.
+    if (size <= KDP_STORAGE_LIMITS.cloudinary) {
         storageType = 'cloudinary';
-        fileDataUrl = await uploadToCloudinary(file);
+        const uploaded = await uploadToCloudinary(file, category);
+        fileData = uploaded.url; storagePublicId = uploaded.publicId;
+    } else if (size <= KDP_STORAGE_LIMITS.r2) {
+        storageType = 'r2';
+        const uploaded = await uploadToR2(file, category);
+        fileData = uploaded.url; storagePath = uploaded.path; storageBucket = uploaded.bucket;
     } else {
         storageType = 'supabase';
-        fileDataUrl = await uploadToSupabase(file);
+        const uploaded = await uploadToSupabase(file, category);
+        fileData = uploaded.url; storagePath = uploaded.path; storageBucket = uploaded.bucket;
     }
 
+    if (!fileData || typeof fileData !== 'string') {
+        throw new Error('Upload selesai tanpa URL file yang valid; metadata tidak disimpan.');
+    }
     return {
-        storageType: storageType,
-        fileData: fileDataUrl,
-        sizeMB: fileSizeMB.toFixed(2)
+        storageType,
+        fileData, storagePath, storageBucket, storagePublicId,
+        sizeBytes: size,
+        sizeMB: (size / (1024 * 1024)).toFixed(2),
+        category
     };
 }
+
+// Kompres foto avatar menjadi JPEG ringan. Batas target 900 KB agar aman untuk jaringan seluler.
+async function compressAvatarImage(file) {
+    if (!file || !/^image\/(png|jpeg|webp)$/.test(file.type)) {
+        throw new Error('Avatar harus berupa gambar PNG, JPG, atau WebP.');
+    }
+    if (!('createImageBitmap' in window)) {
+        // Fallback: file asli tetap dirutekan sesuai ukuran, tidak pernah dipaksa masuk provider yang salah.
+        return file;
+    }
+
+    const bitmap = await createImageBitmap(file);
+    try {
+        const maxDimension = 1200;
+        const scale = Math.min(1, maxDimension / Math.max(bitmap.width, bitmap.height));
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+        canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+        const ctx = canvas.getContext('2d', { alpha: false });
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+
+        let quality = 0.84;
+        let blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', quality));
+        while (blob && blob.size > 900 * 1024 && quality > 0.45) {
+            quality -= 0.1;
+            blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', quality));
+        }
+        if (!blob) throw new Error('Browser gagal mengompres foto avatar.');
+        return new File([blob], `${(file.name || 'avatar').replace(/\.[^.]+$/, '')}.jpg`, {
+            type: 'image/jpeg', lastModified: Date.now()
+        });
+    } finally {
+        bitmap.close?.();
+    }
+}
+
        async function submitModalDocument() {
     const fileInput = document.getElementById('modal-doc-file');
     if (!fileInput.files || !fileInput.files[0]) { 
@@ -3098,6 +3660,7 @@ async function handleFileRouting(file) {
             step: 1,
             fileData: routingResult.fileData, 
             storageType: routingResult.storageType,
+            storagePath: routingResult.storagePath, storageBucket: routingResult.storageBucket, storagePublicId: routingResult.storagePublicId,
             fileSizeMB: routingResult.sizeMB, 
             comments: [], 
             approvedUsers: [],
@@ -3245,7 +3808,6 @@ async function handleFileRouting(file) {
 
             filtered.forEach(doc => {
                 const isCompleted = doc.isCompleted || doc.status?.startsWith('Selesai');
-                const printBtnHtml = isCompleted ? `<button type="button" onclick="printDocument('${doc.id}')" class="bg-emerald-600 hover:bg-emerald-500 text-white px-2 py-1 rounded-lg text-[10px] font-bold">🖨️ Print</button>` : '';
                 const dateDisplay = formatDocDate(doc.createdAt || doc.id);
                 
                 // 2. Format tampilan ukuran file & badge storage
@@ -3275,60 +3837,18 @@ async function handleFileRouting(file) {
                         ${daysLeftCell}
                         <td class="py-2.5 px-3 text-right space-x-1.5">
                             <button type="button" onclick="openPreview('${doc.id}')" class="bg-premium-gold text-regal-black px-2.5 py-1 rounded-lg text-[11px] font-bold">Review</button>
-                            ${printBtnHtml}
                             <button type="button" onclick="deleteDoc('${doc.id}')" class="bg-rose-950 text-rose-300 border border-rose-800 px-2 py-1 rounded-lg text-[11px]">🗑️</button>
                         </td>
                     </tr>`;
             });
         }
 
-        async function deleteDoc(id) { 
-    const targetDoc = documents.find(d => d.id === id);
-    if (!targetDoc) return;
-
-    if (confirm(`Apakah Anda yakin ingin menghapus dokumen "${targetDoc.title}" secara permanen?`)) {
-        try {
-            // 1. HAPUS FILE FISIK BERDASARKAN JENIS STORAGE
-            if (targetDoc.storageType === 'supabase') {
-                // Ambil path file Supabase dari URL
-                const fileUrl = targetDoc.fileData;
-                const pathArr = fileUrl.split('/documents-bucket/');
-                if (pathArr.length > 1) {
-                    const filePath = decodeURIComponent(pathArr[1]);
-                    const { error: supaErr } = await supabaseClient.storage
-                        .from('documents-bucket')
-                        .remove([filePath]);
-                    if (supaErr) console.warn("Gagal menghapus file di Supabase:", supaErr.message);
-                }
-            } else if (targetDoc.storageType === 'cloudinary') {
-                // Untuk Cloudinary: Log notifikasi/penghapusan via API jika API Secret/Unsigned Destroy dikonfigurasi
-                console.log("Menghapus referensi file Cloudinary:", targetDoc.fileData);
-            }
-
-            // 2. HAPUS DOKUMEN PERMANEN DARI FIRESTORE
-            await db.collection('documents').doc(id).delete();
-            
-            // 3. PERBARUI CACHE LOKAL & TAMPILAN
-            documents = documents.filter(d => d.id !== id); 
-            localStorage.setItem('kdp_documents_db', JSON.stringify(documents));
-
-            await recordLog(`Menghapus dokumen & penyimpanan: ${targetDoc.title}`);
-            updateStatistics(); 
-            renderSummaryTable();
-            showToast('Dokumen dan file penyimpanan berhasil dihapus.');
-        } catch (err) {
-            console.error("Gagal menghapus dokumen:", err);
-            alert('Gagal menghapus dokumen: ' + err.message);
-        }
-    }
-}
 
         function renderMyDocuments() {
             const tbody = document.getElementById('my-documents-table');
             if (!tbody) return;
             tbody.innerHTML = documents.map(d => {
                 const isCompleted = d.isCompleted || d.status?.startsWith('Selesai');
-                const printBtn = isCompleted ? `<button type="button" onclick="printDocument('${d.id}')" class="bg-emerald-600 text-white px-2 py-1 rounded font-bold ml-1">Print</button>` : '';
                 const dateDisplay = formatDocDate(d.createdAt || d.id);
                 return `
                     <tr class="border-b border-panel">
@@ -3338,7 +3858,7 @@ async function handleFileRouting(file) {
                         </td>
                         <td class="py-2.5 px-3 uppercase text-premium-gold">${d.docType}</td>
                         <td class="py-2.5 px-3">${d.status}</td>
-                        <td class="py-2.5 px-3 text-right"><button type="button" onclick="openPreview('${d.id}')" class="bg-premium-gold text-black px-2.5 py-1 rounded font-bold">Review</button>${printBtn}</td>
+                        <td class="py-2.5 px-3 text-right"><button type="button" onclick="openPreview('${d.id}')" class="bg-premium-gold text-black px-2.5 py-1 rounded font-bold">Review</button></td>
                     </tr>`;
             }).join('');
         }
@@ -3371,15 +3891,6 @@ async function handleFileRouting(file) {
             document.getElementById('badge-pending-count').innerText = documents.filter(d => canUserAction(d)).length;
         }
 
-        function printDocument(id) {
-            const doc = documents.find(d => d.id === id);
-            if (!doc || !doc.fileData) { alert('File dokumen tidak ditemukan.'); return; }
-            recordLog(`Mencetak dokumen: ${doc.title}`);
-            const win = window.open('');
-            win.document.write(`<iframe src="${doc.fileData}" style="position:fixed; top:0; left:0; bottom:0; right:0; width:100%; height:100%; border:none; margin:0; padding:0; overflow:hidden; z-index:999999;"></iframe>`);
-            setTimeout(() => { win.print(); }, 1000);
-        }
-
         async function openPreview(id) {
             activeDocId = id; placedStamps = [];
             const doc = documents.find(d => d.id === id);
@@ -3406,7 +3917,6 @@ async function handleFileRouting(file) {
                     actionContainerDesk.innerHTML = `
                         <div class="p-3 bg-emerald-950/60 border border-emerald-800 text-emerald-300 rounded-xl text-center space-y-2">
                             <p class="font-bold">${completionMsg}</p>
-                            <button type="button" onclick="printDocument('${doc.id}')" class="w-full py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-bold text-xs shadow">🖨️ Print / Cetak Dokumen</button>
                         </div>
                     `;
                 }
@@ -3414,7 +3924,6 @@ async function handleFileRouting(file) {
                     mobileActionPanel.innerHTML = `
                         <div class="p-2 bg-emerald-950/60 border border-emerald-800 text-emerald-300 text-center space-y-1">
                             <p class="font-bold text-[10px]">${completionMsg}</p>
-                            <button type="button" onclick="printDocument('${doc.id}')" class="w-full py-1 bg-emerald-600 text-white rounded font-bold text-[10px]">🖨️ Print Dokumen</button>
                         </div>
                     `;
                 }
@@ -3469,68 +3978,187 @@ async function handleFileRouting(file) {
 
             if (doc.fileData) {
                 const stackContainer = document.getElementById('pdf-pages-stack-container');
-                stackContainer.innerHTML = '<div class="text-premium-gold text-center py-10 font-mono text-xs">Memuat Dokumen HD...</div>';
+                const scrollView = document.getElementById('pdf-scroll-view');
+                const previewSession = ++pdfPreviewSession;
 
-                await new Promise(r => setTimeout(r, 60));
+                if (pdfPageObserver) {
+                    pdfPageObserver.disconnect();
+                    pdfPageObserver = null;
+                }
+                if (loadedPdfDocument) {
+                    try { loadedPdfDocument.destroy(); } catch (_) {}
+                    loadedPdfDocument = null;
+                }
+
+                stackContainer.innerHTML = '<div id="pdf-loading-status" class="text-premium-gold text-center py-10 font-mono text-xs">Menghubungkan ke penyimpanan PDF...</div>';
 
                 try {
                     let pdfInitData = doc.fileData;
                     if (typeof doc.fileData === 'string' && doc.fileData.startsWith('data:application/pdf;base64,')) {
                         const base64Str = doc.fileData.split(',')[1];
                         const binaryStr = atob(base64Str);
-                        const len = binaryStr.length;
-                        const bytes = new Uint8Array(len);
-                        for (let i = 0; i < len; i++) {
-                            bytes[i] = binaryStr.charCodeAt(i);
-                        }
+                        const bytes = new Uint8Array(binaryStr.length);
+                        for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
                         pdfInitData = { data: bytes };
+                    } else if (typeof doc.fileData === 'string' && /^https?:\/\//i.test(doc.fileData)) {
+                        // Supabase: gunakan Worker sebagai proxy agar Range dan header
+                        // Content-Range dapat diteruskan secara konsisten melewati CORS.
+                        // Cloudinary dan URL lama tanpa metadata tetap memakai URL asal.
+                        let pdfUrl = doc.fileData;
+                        let pdfHttpHeaders = undefined;
+
+                        if (doc.storageType === 'supabase' && doc.storageBucket && doc.storagePath) {
+                            if (!auth.currentUser) {
+                                throw new Error('Sesi login tidak tersedia untuk membaca PDF Supabase. Silakan login ulang.');
+                            }
+                            const idToken = await auth.currentUser.getIdToken();
+                            const proxyUrl = new URL(`${KDP_STORAGE_DELETE_ENDPOINT}/supabase-file`);
+                            proxyUrl.searchParams.set('bucket', doc.storageBucket);
+                            proxyUrl.searchParams.set('path', doc.storagePath);
+                            pdfUrl = proxyUrl.toString();
+                            pdfHttpHeaders = { Authorization: `Bearer ${idToken}` };
+                        }
+
+                        pdfInitData = {
+                            url: pdfUrl,
+                            httpHeaders: pdfHttpHeaders,
+                            rangeChunkSize: 1024 * 1024,
+                            disableRange: false,
+                            disableStream: true,
+                            disableAutoFetch: true
+                        };
                     }
 
-                    loadedPdfDocument = await pdfjsLib.getDocument(pdfInitData).promise;
+                    const loadingTask = pdfjsLib.getDocument(pdfInitData);
+                    loadedPdfDocument = await loadingTask.promise;
+                    if (previewSession !== pdfPreviewSession) return;
+
                     totalPdfPages = loadedPdfDocument.numPages;
                     document.getElementById('floating-page-indicator').innerText = `Halaman 1 / ${totalPdfPages}`;
 
+                    // Ambil ukuran halaman pertama untuk membuat placeholder seluruh halaman.
+                    const firstPage = await loadedPdfDocument.getPage(1);
+                    if (previewSession !== pdfPreviewSession) return;
+
+                    const containerWidth = Math.max(280, (stackContainer.clientWidth || (window.innerWidth - 10)) - 12);
+                    const firstViewport = firstPage.getViewport({ scale: 1 });
+                    const cssScale = containerWidth / firstViewport.width;
+                    const firstCssViewport = firstPage.getViewport({ scale: cssScale });
+
                     stackContainer.innerHTML = '';
-                    const containerWidth = stackContainer.clientWidth || (window.innerWidth - 10);
-                    const pixelRatio = Math.max(window.devicePixelRatio || 1, 2);
+                    const pageWrappers = [];
 
-                    for (let i = 1; i <= totalPdfPages; i++) {
-                        const page = await loadedPdfDocument.getPage(i);
-                        const unscaledViewport = page.getViewport({ scale: 1.0 });
-                        
-                        const cssScale = (containerWidth / unscaledViewport.width);
-                        const cssViewport = page.getViewport({ scale: cssScale });
-                        const renderViewport = page.getViewport({ scale: cssScale * pixelRatio });
-
+                    for (let pageNum = 1; pageNum <= totalPdfPages; pageNum++) {
                         const wrapper = document.createElement('div');
                         wrapper.className = 'pdf-page-canvas-wrapper';
-                        wrapper.id = `pdf-page-wrapper-${i}`;
-                        wrapper.style.width = `${Math.floor(cssViewport.width)}px`;
-                        wrapper.style.height = `${Math.floor(cssViewport.height)}px`;
+                        wrapper.id = `pdf-page-wrapper-${pageNum}`;
+                        wrapper.dataset.pageNumber = String(pageNum);
+                        wrapper.dataset.renderState = 'waiting';
+                        wrapper.style.width = `${Math.floor(firstCssViewport.width)}px`;
+                        wrapper.style.height = `${Math.floor(firstCssViewport.height)}px`;
+                        wrapper.style.maxWidth = '100%';
+                        wrapper.style.overflow = 'hidden';
 
-                        const canvas = document.createElement('canvas');
-                        canvas.width = Math.floor(renderViewport.width); 
-                        canvas.height = Math.floor(renderViewport.height);
-                        
-                        canvas.style.width = `${Math.floor(cssViewport.width)}px`;
-                        canvas.style.height = `${Math.floor(cssViewport.height)}px`;
-                        
-                        const ctx = canvas.getContext('2d');
+                        const placeholder = document.createElement('div');
+                        placeholder.className = 'pdf-page-loading-placeholder';
+                        placeholder.style.cssText = 'width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:#a3a3a3;background:#fff;font:11px sans-serif;';
+                        placeholder.textContent = `Halaman ${pageNum} · menunggu dirender`;
 
                         const layer = document.createElement('div');
-                        layer.id = `stamps-layer-page-${i}`;
+                        layer.id = `stamps-layer-page-${pageNum}`;
                         layer.className = 'absolute inset-0 z-30 stamps-layer-container';
 
-                        wrapper.appendChild(canvas);
+                        wrapper.appendChild(placeholder);
                         wrapper.appendChild(layer);
                         stackContainer.appendChild(wrapper);
-
-                        await page.render({ canvasContext: ctx, viewport: renderViewport }).promise;
-                        setupCanvasMouseInteractions(wrapper, i);
+                        pageWrappers.push(wrapper);
                     }
+
+                    async function renderPdfPage(pageNum) {
+                        if (previewSession !== pdfPreviewSession) return;
+                        const wrapper = pageWrappers[pageNum - 1];
+                        if (!wrapper || wrapper.dataset.renderState === 'rendered' || wrapper.dataset.renderState === 'rendering') return;
+
+                        wrapper.dataset.renderState = 'rendering';
+                        try {
+                            const page = pageNum === 1 ? firstPage : await loadedPdfDocument.getPage(pageNum);
+                            if (previewSession !== pdfPreviewSession) return;
+
+                            const pageBaseViewport = page.getViewport({ scale: 1 });
+                            const pageCssScale = containerWidth / pageBaseViewport.width;
+                            const cssViewport = page.getViewport({ scale: pageCssScale });
+                            // Batasi pixel ratio agar preview tidak membuat canvas terlalu besar.
+                            const pixelRatio = Math.min(1.5, Math.max(1, window.devicePixelRatio || 1));
+                            const renderViewport = page.getViewport({ scale: pageCssScale * pixelRatio });
+
+                            wrapper.style.width = `${Math.floor(cssViewport.width)}px`;
+                            wrapper.style.height = `${Math.floor(cssViewport.height)}px`;
+                            const oldPlaceholder = wrapper.querySelector('.pdf-page-loading-placeholder');
+                            if (oldPlaceholder) oldPlaceholder.remove();
+
+                            const canvas = document.createElement('canvas');
+                            canvas.width = Math.max(1, Math.floor(renderViewport.width));
+                            canvas.height = Math.max(1, Math.floor(renderViewport.height));
+                            canvas.style.width = `${Math.floor(cssViewport.width)}px`;
+                            canvas.style.height = `${Math.floor(cssViewport.height)}px`;
+                            canvas.style.display = 'block';
+
+                            const layer = document.getElementById(`stamps-layer-page-${pageNum}`);
+                            wrapper.insertBefore(canvas, layer || null);
+
+                            const context = canvas.getContext('2d', { alpha: false });
+                            await page.render({ canvasContext: context, viewport: renderViewport }).promise;
+                            if (previewSession !== pdfPreviewSession) return;
+
+                            wrapper.dataset.renderState = 'rendered';
+                            setupCanvasMouseInteractions(wrapper, pageNum);
+                            renderAllStampsLayers();
+                        } catch (pageError) {
+                            wrapper.dataset.renderState = 'error';
+                            const placeholder = wrapper.querySelector('.pdf-page-loading-placeholder') || document.createElement('div');
+                            placeholder.className = 'pdf-page-loading-placeholder';
+                            placeholder.style.cssText = 'padding:16px;text-align:center;color:#e11d48;background:#fff;font:11px sans-serif;';
+                            placeholder.textContent = `Gagal merender halaman ${pageNum}: ${pageError.message}`;
+                            if (!placeholder.parentNode) wrapper.prepend(placeholder);
+                            console.error(`Gagal merender halaman PDF ${pageNum}:`, pageError);
+                        }
+                    }
+
+                    // Render halaman pertama terlebih dahulu agar pengguna segera dapat membaca.
+                    const status = document.getElementById('pdf-loading-status');
+                    if (status) status.remove();
+                    await renderPdfPage(1);
+                    if (previewSession !== pdfPreviewSession) return;
+
+                    // Halaman lain baru dirender saat mendekati area yang terlihat.
+                    if ('IntersectionObserver' in window) {
+                        pdfPageObserver = new IntersectionObserver((entries) => {
+                            entries.forEach(entry => {
+                                if (entry.isIntersecting) {
+                                    const pageNum = Number(entry.target.dataset.pageNumber);
+                                    renderPdfPage(pageNum);
+                                    pdfPageObserver?.unobserve(entry.target);
+                                }
+                            });
+                        }, {
+                            root: scrollView,
+                            rootMargin: '1000px 0px',
+                            threshold: 0.01
+                        });
+
+                        pageWrappers.slice(1).forEach(wrapper => pdfPageObserver.observe(wrapper));
+                    } else {
+                        // Fallback browser lama: render bertahap dengan jeda agar UI tetap responsif.
+                        for (let pageNum = 2; pageNum <= totalPdfPages; pageNum++) {
+                            if (previewSession !== pdfPreviewSession) break;
+                            await renderPdfPage(pageNum);
+                            await new Promise(resolve => setTimeout(resolve, 0));
+                        }
+                    }
+
                     renderAllStampsLayers();
                 } catch (err) {
-                    console.error('Error rendering PDF:', err);
+                    console.error('Error loading PDF preview:', err);
                     stackContainer.innerHTML = `<div class="text-rose-500 text-center py-10 text-xs">Gagal memuat pratinjau: ${err.message}</div>`;
                 }
             }
@@ -3551,15 +4179,134 @@ async function handleFileRouting(file) {
 
         function closeModal() {
             document.getElementById('preview-modal').classList.add('hidden');
+            pdfPreviewSession++;
+            if (pdfPageObserver) {
+                pdfPageObserver.disconnect();
+                pdfPageObserver = null;
+            }
+            if (loadedPdfDocument) {
+                try { loadedPdfDocument.destroy(); } catch (_) {}
+                loadedPdfDocument = null;
+            }
             const mobileBar = document.getElementById('mobile-pdf-action-bar');
             if (mobileBar) mobileBar.style.display = 'none';
         }
 
+
+        // Mengambil byte PDF asli dari berbagai sumber penyimpanan.
+        // Preview PDF.js dapat membaca URL secara langsung, sedangkan PDF-Lib
+        // membutuhkan byte/ArrayBuffer untuk menempelkan stempel permanen.
+        async function getPdfBytesForApproval(doc) {
+            const source = doc && doc.fileData;
+            if (!source) throw new Error('Sumber file PDF tidak ditemukan pada dokumen.');
+
+            if (source instanceof Uint8Array) return source;
+            if (source instanceof ArrayBuffer) return new Uint8Array(source);
+
+            if (typeof source === 'string') {
+                const dataUrlMatch = source.match(/^data:application\/pdf;base64,([\s\S]+)$/i);
+                if (dataUrlMatch) {
+                    const binary = atob(dataUrlMatch[1]);
+                    const bytes = new Uint8Array(binary.length);
+                    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+                    return bytes;
+                }
+
+                if (/^https?:\/\//i.test(source)) {
+                    const response = await fetch(source);
+                    if (!response.ok) {
+                        throw new Error(`Gagal mengunduh PDF dari ${doc.storageType || 'cloud'} (HTTP ${response.status}).`);
+                    }
+                    const bytes = new Uint8Array(await response.arrayBuffer());
+                    if (bytes.length < 5 || String.fromCharCode(...bytes.slice(0, 5)) !== '%PDF-') {
+                        throw new Error('File yang diterima bukan PDF valid. Periksa URL dan akses penyimpanan dokumen.');
+                    }
+                    return bytes;
+                }
+
+                throw new Error('Format sumber PDF tidak dikenali.');
+            }
+
+            throw new Error('Format data PDF tidak didukung.');
+        }
+
+        let approvalInProgress = false;
+
+        function setApprovalProgress(message, title = 'Memproses persetujuan...') {
+            const overlay = document.getElementById('approval-progress-overlay');
+            const titleEl = document.getElementById('approval-progress-title');
+            const messageEl = document.getElementById('approval-progress-message');
+            if (titleEl) titleEl.textContent = title;
+            if (messageEl) messageEl.textContent = message;
+        }
+
         async function processApproval(action) {
+            if (approvalInProgress) return;
+            const doc = documents.find(d => d.id === activeDocId);
+            if (!doc || placedStamps.length === 0) {
+                alert('Tempatkan kelengkapan stempel/tanda tangan terlebih dahulu!');
+                return;
+            }
+
+            approvalInProgress = true;
+            const overlay = document.getElementById('approval-progress-overlay');
+            const buttons = ['btn-approve-action', 'btn-approve-action-mob'];
+            const originalLabels = {};
+            buttons.forEach(id => {
+                const button = document.getElementById(id);
+                if (!button) return;
+                originalLabels[id] = button.innerHTML;
+                button.disabled = true;
+                button.classList.add('opacity-70', 'cursor-wait');
+                button.innerHTML = '<span class="inline-flex items-center justify-center gap-2"><span class="approval-button-spinner"></span> Memproses...</span>';
+            });
+            document.querySelectorAll('.approval-button-spinner').forEach(el => {
+                el.style.cssText = 'display:inline-block;width:12px;height:12px;border:2px solid rgba(255,255,255,.35);border-top-color:#fff;border-radius:50%;animation:approval-spin .8s linear infinite;';
+            });
+            ['approval-checkbox', 'approval-checkbox-mob'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.disabled = true;
+            });
+
+            if (overlay) overlay.classList.add('active');
+            setApprovalProgress('Mengambil file PDF dan menyiapkan proses stamping.');
+            try {
+                await processApprovalCore(action);
+            } catch (error) {
+                console.error('Kesalahan tidak tertangani pada proses approval:', error);
+                alert(`Terjadi kesalahan saat memproses persetujuan: ${error.message || error}`);
+            } finally {
+                if (overlay) overlay.classList.remove('active');
+                approvalInProgress = false;
+                buttons.forEach(id => {
+                    const button = document.getElementById(id);
+                    if (!button) return;
+                    button.innerHTML = originalLabels[id] || (id.endsWith('-mob') ? '✅ Setujui' : '✅ Setujui & Stempel TTD');
+                    button.classList.remove('opacity-70', 'cursor-wait');
+                });
+                ['approval-checkbox', 'approval-checkbox-mob'].forEach(id => {
+                    const el = document.getElementById(id);
+                    if (el) el.disabled = false;
+                });
+                if (typeof toggleApprovalButtonState === 'function') toggleApprovalButtonState();
+            }
+        }
+
+        async function processApprovalCore(action) {
             const doc = documents.find(d => d.id === activeDocId);
             if (!doc || placedStamps.length === 0) { alert('Tempatkan kelengkapan stempel/tanda tangan terlebih dahulu!'); return; }
 
-            const pdfDoc = await PDFLib.PDFDocument.load(doc.fileData);
+            let pdfDoc;
+            setApprovalProgress('Mengunduh dan membaca file PDF. Untuk dokumen besar, proses ini dapat memerlukan waktu.', 'Tahap 1/4 · Membaca PDF');
+            try {
+                const pdfBytes = await getPdfBytesForApproval(doc);
+                pdfDoc = await PDFLib.PDFDocument.load(pdfBytes);
+            } catch (loadError) {
+                console.error('Gagal memuat PDF untuk proses approval:', loadError);
+                alert(`Persetujuan belum dapat diproses: ${loadError.message || loadError}`);
+                return;
+            }
+            setApprovalProgress('Membubuhkan paraf, tanda tangan, tanggal, dan anotasi pada halaman PDF.', 'Tahap 2/4 · Membubuhkan stempel');
             const pages = pdfDoc.getPages();
             const now = new Date();
             const dateStr = `${String(now.getDate()).padStart(2,'0')}/${String(now.getMonth()+1).padStart(2,'0')}/${now.getFullYear()}`;
@@ -3690,10 +4437,51 @@ async function handleFileRouting(file) {
                 }
             }
 
+            setApprovalProgress('Menyusun dan menyiapkan PDF final setelah stempel dipasang.', 'Tahap 3/4 · Menyiapkan PDF final');
             const bytes = await pdfDoc.save();
             const blob = new Blob([bytes], { type: 'application/pdf' });
-            doc.fileData = arrayBufferToBase64DataUrl(await blob.arrayBuffer(), 'application/pdf');
-            
+            const approvedFile = new File(
+                [blob],
+                `${(doc.title || 'dokumen').replace(/\\.pdf$/i, '')}_approved.pdf`,
+                { type: 'application/pdf', lastModified: Date.now() }
+            );
+
+            // Simpan PDF hasil stempel ke cloud sesuai routing ukuran file.
+            // Isi PDF tidak disimpan sebagai Base64 di localStorage.
+            setApprovalProgress('Mengunggah PDF hasil stempel ke penyimpanan cloud. Jangan tutup halaman ini.', 'Tahap 4/4 · Mengunggah dan menyimpan');
+            const previousAsset = getDocAssets(doc)[0] || null;
+            let uploadedApprovedAsset;
+            try {
+                uploadedApprovedAsset = await handleFileRouting(approvedFile, 'documents/approved');
+            } catch (uploadError) {
+                console.error('Gagal mengunggah PDF hasil approval:', uploadError);
+                alert(`PDF sudah diproses, tetapi gagal disimpan ke cloud: ${uploadError.message || uploadError}`);
+                return;
+            }
+
+            const previousFileMetadata = {
+                fileData: doc.fileData,
+                storageType: doc.storageType,
+                storagePath: doc.storagePath,
+                storageBucket: doc.storageBucket,
+                storagePublicId: doc.storagePublicId,
+                fileSizeMB: doc.fileSizeMB,
+                approvedUsers: [...(doc.approvedUsers || [])],
+                approvedStaffList: [...(doc.approvedStaffList || [])],
+                kabagHasVerified: doc.kabagHasVerified,
+                step: doc.step,
+                status: doc.status,
+                isCompleted: doc.isCompleted,
+                completedAt: doc.completedAt,
+                lastUpdated: doc.lastUpdated
+            };
+            doc.fileData = uploadedApprovedAsset.fileData;
+            doc.storageType = uploadedApprovedAsset.storageType;
+            doc.storagePath = uploadedApprovedAsset.storagePath;
+            doc.storageBucket = uploadedApprovedAsset.storageBucket;
+            doc.storagePublicId = uploadedApprovedAsset.storagePublicId;
+            doc.fileSizeMB = uploadedApprovedAsset.sizeMB;
+
             if (!doc.approvedUsers) doc.approvedUsers = [];
             if (!doc.approvedUsers.includes(currentUser.username)) {
                 doc.approvedUsers.push(currentUser.username);
@@ -3726,16 +4514,16 @@ async function handleFileRouting(file) {
                 } else if (pos === 'pimpinan') {
                     doc.step = 4;
                     doc.status = 'Selesai (Fully Approved)';
-                    doc.isCompleted = true;
+                    doc.isCompleted = true; doc.completedAt = Date.now();
                 }
             } else if (type === 'kasir') {
                 if (doc.step === 1) { doc.step = 2; doc.status = 'Tahap 2: Menunggu KDP Kabag'; }
                 else if (doc.step === 2) { doc.kabagHasVerified = true; doc.step = 3; doc.status = 'Tahap 3: Menunggu Pimpinan MR'; }
-                else if (doc.step === 3) { doc.step = 4; doc.status = 'Selesai (Fully Approved)'; doc.isCompleted = true; }
+                else if (doc.step === 3) { doc.step = 4; doc.status = 'Selesai (Fully Approved)'; doc.isCompleted = true; doc.completedAt = Date.now(); }
             } else if (type === 'admkdp') {
                 if (doc.step === 1) { doc.step = 2; doc.status = 'Tahap 2: Menunggu KDP Kabag'; }
                 else if (doc.step === 2) { doc.kabagHasVerified = true; doc.step = 3; doc.status = 'Tahap 3: Menunggu Pimpinan MR'; }
-                else if (doc.step === 3) { doc.step = 4; doc.status = 'Selesai (Fully Approved)'; doc.isCompleted = true; }
+                else if (doc.step === 3) { doc.step = 4; doc.status = 'Selesai (Fully Approved)'; doc.isCompleted = true; doc.completedAt = Date.now(); }
             } else if (type === 'lain_lain') {
                 if (pos === 'staff_kdp') {
                     if (!doc.approvedStaffList) doc.approvedStaffList = [];
@@ -3750,14 +4538,46 @@ async function handleFileRouting(file) {
                 } else if (pos === 'pimpinan') {
                     doc.step = 4;
                     doc.status = 'Selesai (Fully Approved)';
-                    doc.isCompleted = true;
+                    doc.isCompleted = true; doc.completedAt = Date.now();
                 } else if (!doc.kabagHasVerified) {
                     doc.status = 'Menunggu Review Staff KDP (Opsional) atau KDP Kabag';
                 }
             }
 
             doc.lastUpdated = Date.now();
-            await saveStateToCloud();
+
+            // Simpan status dan URL PDF terbaru ke Firestore sebelum menghapus file lama.
+            setApprovalProgress('Menyimpan status persetujuan dan alamat PDF terbaru ke database.');
+            try {
+                await db.collection('documents').doc(doc.id).set(doc);
+                cacheDocumentsLocally();
+            } catch (persistError) {
+                Object.assign(doc, previousFileMetadata);
+                try {
+                    await deleteCloudAsset({
+                        storageType: uploadedApprovedAsset.storageType,
+                        storagePath: uploadedApprovedAsset.storagePath,
+                        storageBucket: uploadedApprovedAsset.storageBucket,
+                        publicId: uploadedApprovedAsset.storagePublicId,
+                        url: uploadedApprovedAsset.fileData
+                    });
+                } catch (cleanupError) {
+                    console.warn('Gagal membersihkan PDF approval yang tidak tersimpan:', cleanupError);
+                }
+                console.error('Gagal menyimpan status approval ke Firestore:', persistError);
+                alert(`Persetujuan gagal disimpan. Status dokumen dipulihkan: ${persistError.message || persistError}`);
+                return;
+            }
+
+            // File versi lama dihapus hanya setelah dokumen baru berhasil tersimpan.
+            if (previousAsset && previousAsset.url !== uploadedApprovedAsset.fileData) {
+                try {
+                    await deleteCloudAsset(previousAsset);
+                } catch (cleanupError) {
+                    console.warn('PDF versi sebelumnya belum terhapus dari cloud:', cleanupError);
+                }
+            }
+
             recordLog(`Menyetujui dokumen: ${doc.title} (${doc.status})`);
             
             // Kirim notifikasi ke approver berikutnya
@@ -3772,31 +4592,23 @@ async function handleFileRouting(file) {
                 openPreview(doc.id);
             }, 100);
         }
-// Fungsi untuk memuat daftar user ke dropdown "Kirim ke"
-async function loadChatUsers() {
-    try {
-        const response = await fetch('/api/users'); // Sesuaikan endpoint API Anda jika berbeda
-        const users = await response.json();
-        
-        const targetSelect = document.getElementById('user-chat-target');
-        if (!targetSelect) return;
+// Memuat penerima chat dari database pengguna lokal aplikasi.
+// Endpoint /api/users tidak tersedia pada server statis Live Server,
+// sehingga daftar penerima diambil dari usersDatabase yang sudah dipakai aplikasi.
+function loadChatUsers() {
+    const targetSelect = document.getElementById('user-chat-target');
+    if (!targetSelect) return;
 
-        // Simpan opsi default (Broadcast)
-        targetSelect.innerHTML = '<option value="admin">Admin / All Users (Broadcast)</option>';
+    targetSelect.innerHTML = '<option value="admin">Admin / All Users (Broadcast)</option>';
+    const userEntries = Object.entries(usersDatabase || {});
 
-        // Loop data user yang ada di database dan tambahkan ke <select>
-        users.forEach(user => {
-            // Pastikan tidak menampilkan user yang sedang login sendiri (opsional)
-            // if (user.email === currentUserEmail) return; 
-
-            const option = document.createElement('option');
-            option.value = user.id; // atau user.email / user.username sesuai struktur database Anda
-            option.textContent = user.name || user.email; // Nama atau email yang tampil di dropdown
-            targetSelect.appendChild(option);
-        });
-    } catch (error) {
-        console.error("Gagal memuat daftar user untuk chat:", error);
-    }
+    userEntries.forEach(([username, user]) => {
+        if (!user) return;
+        const option = document.createElement('option');
+        option.value = username;
+        option.textContent = user.fullname || user.name || user.email || username;
+        targetSelect.appendChild(option);
+    });
 }
 
 // Panggil fungsi saat halaman selesai dimuat
@@ -3805,20 +4617,62 @@ document.addEventListener("DOMContentLoaded", function() {
 });
         function openRejectModal() { document.getElementById('reject-reason-modal').classList.remove('hidden'); }
         async function submitDocumentRejection() {
-            const reason = document.getElementById('reject-reason-input').value.trim();
-            if (!reason) { alert('Isi alasan.'); return; }
-            const doc = documents.find(d => d.id === activeDocId);
-            doc.status = `Ditolak: ${reason}`; 
+            const reasonInput = document.getElementById('reject-reason-input');
+            const reason = reasonInput ? reasonInput.value.trim() : '';
+            if (!reason) { alert('Isi alasan penolakan.'); return; }
+
+            const doc = documents.find(d => String(d.id) === String(activeDocId));
+            if (!doc) { alert('Dokumen tidak ditemukan. Muat ulang daftar dokumen.'); return; }
+
+            // Simpan salinan agar perubahan lokal dapat dibatalkan jika Firestore gagal.
+            const previousDoc = { ...doc };
+            const rejectedAt = Date.now();
+            doc.status = `Ditolak: ${reason}`;
             doc.step = 0;
             doc.isCompleted = false;
-            doc.lastUpdated = Date.now();
+            doc.rejectedAt = rejectedAt;
+            doc.lastUpdated = rejectedAt;
+            doc.rejectedBy = currentUser ? currentUser.username : null;
 
-            await saveStateToCloud();
-            recordLog(`Menolak dokumen "${doc.title}" dengan alasan: ${reason}`);
-            createNotification(doc.uploader.split(' ')[0], 'Dokumen Ditolak', `Dokumen "${doc.title}" ditolak dengan alasan: ${reason}`, doc.id);
+            const rejectButton = document.querySelector('#reject-reason-modal button[onclick="submitDocumentRejection()"]');
+            if (rejectButton) { rejectButton.disabled = true; rejectButton.textContent = 'Menyimpan penolakan...'; }
 
-            document.getElementById('reject-reason-modal').classList.add('hidden');
-            closeModal(); updateStatistics(); renderSummaryTable();
+            try {
+                // PENTING: saveStateToCloud() hanya memperbarui cache browser.
+                // Sumber utama dokumen adalah koleksi Firestore "documents".
+                // Karena itu status penolakan harus ditulis ke dokumen kanonis terlebih dahulu.
+                await db.collection('documents').doc(String(doc.id)).set({
+                    status: doc.status,
+                    step: doc.step,
+                    isCompleted: false,
+                    rejectedAt: doc.rejectedAt,
+                    lastUpdated: doc.lastUpdated,
+                    rejectedBy: doc.rejectedBy,
+                    rejectionReason: reason
+                }, { merge: true });
+
+                cacheDocumentsLocally();
+                if (reasonInput) reasonInput.value = '';
+                document.getElementById('reject-reason-modal').classList.add('hidden');
+                closeModal();
+                updateStatistics();
+                renderSummaryTable();
+
+                recordLog(`Menolak dokumen "${doc.title}" dengan alasan: ${reason}`);
+                const uploaderUsername = String(doc.uploader || '').trim().split(/\s+/)[0];
+                if (uploaderUsername) {
+                    createNotification(uploaderUsername, 'Dokumen Ditolak', `Dokumen "${doc.title}" ditolak dengan alasan: ${reason}`, doc.id);
+                }
+                showToast('Dokumen berhasil ditolak dan status tersimpan di database.');
+            } catch (err) {
+                // Jangan biarkan UI menampilkan status ditolak jika server belum menyimpannya.
+                Object.assign(doc, previousDoc);
+                cacheDocumentsLocally();
+                console.error('Gagal menyimpan penolakan ke Firestore:', err);
+                alert('Penolakan belum tersimpan ke database. Status dokumen dikembalikan. Silakan coba lagi.\n\n' + (err.message || err));
+            } finally {
+                if (rejectButton) { rejectButton.disabled = false; rejectButton.textContent = 'Konfirmasi Penolakan'; }
+            }
         }
 
         function filterSummaryTable(type) { 
@@ -3872,33 +4726,10 @@ document.addEventListener('DOMContentLoaded', () => {
             closeDeleteModal();
 
             try {
-                // 1. Hapus File Fisik di Supabase jika ada
-                if (targetDoc && targetDoc.storageType === 'supabase' && window.supabase) {
-                    try {
-                        const fileUrl = targetDoc.fileData;
-                        const pathArr = fileUrl.split('/documents-bucket/');
-                        if (pathArr.length > 1) {
-                            const filePath = decodeURIComponent(pathArr[1]);
-                            await supabaseClient.storage
-                                .from('documents-bucket')
-                                .remove([filePath]);
-                        }
-                    } catch (supaErr) {
-                        console.warn("Catatan: Gagal menghapus file fisik di Supabase, melanjutkan hapus data dokumen:", supaErr);
-                    }
-                }
-
-                // 2. Hapus Dokumen Permanen dari Firestore
-                await db.collection('documents').doc(id).delete();
-                
-                // 3. Perbarui Cache Lokal & Tampilan
-                documents = documents.filter(d => d.id !== id); 
-                localStorage.setItem('kdp_documents_db', JSON.stringify(documents));
-
-                await recordLog(`Menghapus dokumen & penyimpanan: ${targetDoc ? targetDoc.title : id}`);
-                updateStatistics(); 
+                await deleteDocumentEverywhere(targetDoc);
+                updateStatistics();
                 renderSummaryTable();
-                showToast('Dokumen dan penyimpanan berhasil dihapus.');
+                showToast('Dokumen dan file cloud berhasil dihapus.');
             } catch (err) {
                 console.error("Gagal menghapus dokumen:", err);
                 alert('Gagal menghapus dokumen: ' + err.message);
@@ -3932,229 +4763,468 @@ document.addEventListener('DOMContentLoaded', () => {
         </div>
     </div>
 </div>
-<!-- Tombol Floating Chat AI -->
-<!-- Tombol Floating & Kotak Chat -->
-<div id="ai-chat-widget" style="position: fixed; bottom: 20px; right: 20px; z-index: 999999;">
-    <!-- Tombol Buka/Tutup Chat -->
-    <button id="ai-chat-toggle-btn" type="button" style="background-color: #f39c12; color: #fff; border: none; border-radius: 50%; width: 55px; height: 55px; font-size: 24px; cursor: pointer; box-shadow: 0 4px 15px rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center;">
-        💬
-        <span id="chat-notification-badge" style="display: none; position: absolute; top: -5px; right: -5px; background: #e74c3c; color: white; border-radius: 50%; padding: 2px 6px; font-size: 10px; font-weight: bold;">0</span>
-    </button>
-
-    <!-- Kotak Jendela Chat (Default Disembunyikan) -->
-    <div id="ai-chat-box" style="display: none; position: fixed; bottom: 85px; right: 20px; width: 340px; height: 450px; background: #1e1e1e; border: 1px solid #333; border-radius: 12px; flex-direction: column; overflow: hidden; box-shadow: 0 5px 25px rgba(0,0,0,0.7); z-index: 1000000;">
-        <!-- Header Chat & Tab Navigation -->
-        <div style="background: #2c2c2c; border-bottom: 1px solid #333;">
-            <div style="padding: 10px 12px; color: #fff; font-weight: bold; display: flex; justify-content: space-between; align-items: center;">
-                <span>💬 Pusat Bantuan & Chat</span>
-                <button type="button" id="ai-chat-close-btn" style="background: none; border: none; color: #aaa; font-size: 16px; cursor: pointer;">✕</button>
-            </div>
-            <!-- Pilihan Tab Navigation -->
-            <div style="display: flex; background: #222;">
-                 <button type="button" id="tab-btn-user" onclick="switchChatTab('user')" style="flex: 1; padding: 8px; background: #222; color: #888; border: none; border-bottom: 2px solid transparent; cursor: pointer; font-size: 11px; font-weight: bold;">👥 Chat Antar User</button>
-            </div>
-        </div>
-        
-           <!-- CONTENT 2: Panel Chat Antar User -->
-<div id="panel-chat-user" style="display: flex; flex-direction: column; flex: 1; overflow: hidden;">
-    
-    <!-- Pilihan Target Kirim Pesan (Chat to All / Per User) -->
-    <div style="padding: 8px; background: #252525; border-bottom: 1px solid #333; display: flex; flex-direction: column; gap: 4px;">
-        <label style="font-size: 11px; color: #aaa;">Kirim ke:</label>
-        <select id="user-chat-target" style="flex: 1; background: #111; color: #fff; border: 1px solid #444; padding: 5px; border-radius: 4px; font-size: 12px;">
-            <option value="admin">Admin / All Users (Broadcast)</option>
-            <!-- Daftar user lain akan dimuat di sini secara dinamis -->
+<!-- KDP DOKU SIGN: Widget Kira Panduan Mandiri + Chat Antar Pengguna -->
+<div id="ai-chat-widget" style="position:fixed;bottom:20px;right:20px;z-index:999999;">
+  <button id="ai-chat-toggle-btn" type="button" aria-label="Buka pusat bantuan dan chat" style="position:relative;background:#d4af37;color:#111;border:none;border-radius:50%;width:56px;height:56px;font-size:24px;cursor:pointer;box-shadow:0 4px 15px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;">💬
+    <span id="chat-notification-badge" style="display:none;position:absolute;top:-5px;right:-5px;background:#e74c3c;color:white;border-radius:20px;min-width:19px;padding:2px 5px;font-size:10px;font-weight:bold;">0</span>
+  </button>
+  <div id="ai-chat-box" style="display:none;position:fixed;bottom:88px;right:20px;width:min(370px,calc(100vw - 28px));height:min(560px,calc(100vh - 120px));background:#1e1e1e;border:1px solid #444;border-radius:14px;flex-direction:column;overflow:hidden;box-shadow:0 8px 30px rgba(0,0,0,.65);z-index:1000000;">
+    <div style="background:#242424;border-bottom:1px solid #3b3b3b;">
+      <div style="padding:11px 13px;color:#fff;font-weight:700;display:flex;justify-content:space-between;align-items:center;">
+        <span>💬 Pusat Bantuan KDP DOKU SIGN</span>
+        <button type="button" id="ai-chat-close-btn" aria-label="Tutup chat" style="background:none;border:none;color:#aaa;font-size:19px;cursor:pointer;">✕</button>
+      </div>
+      <div style="display:flex;background:#191919;">
+        <button type="button" id="tab-btn-ai" onclick="switchChatTab('ai')" style="flex:1;padding:10px 5px;background:#242424;color:#d4af37;border:none;border-bottom:2px solid #d4af37;cursor:pointer;font-size:12px;font-weight:700;">📘 Panduan Kira</button>
+        <button type="button" id="tab-btn-user" onclick="switchChatTab('user')" style="flex:1;padding:10px 5px;background:#191919;color:#999;border:none;border-bottom:2px solid transparent;cursor:pointer;font-size:12px;font-weight:700;">👥 Chat User</button>
+      </div>
+    </div>
+    <div id="panel-chat-ai" style="display:flex;flex:1;min-height:0;flex-direction:column;">
+      <div style="padding:12px;background:#29251b;border-bottom:1px solid #40371f;color:#f3e6bd;font-size:12px;">
+        <strong>✨ Kira</strong> · Asisten virtual KDP DOKU SIGN<br><span style="color:#c9c0a7;">Halo! Saya Kira. Saya panduan internal KDP DOKU SIGN. Tanyakan cara mengunggah, memproses, menyetujui, mengelola, atau mengatur PDF.</span>
+      </div>
+      <div id="kira-quick-questions" style="background:#1e1e1e;border-bottom:1px solid #333;">
+        <button type="button" id="kira-quick-toggle" aria-expanded="false" style="width:100%;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:9px 11px;background:#242424;border:0;color:#d8bd62;text-align:left;cursor:pointer;font-size:10px;font-weight:700;">
+          <span><span id="kira-quick-title">PERTANYAAN PANDUAN</span> <span id="kira-quick-count" style="color:#aaa;font-weight:400;">(pilih untuk melihat)</span></span><span id="kira-quick-chevron">＋</span>
+        </button>
+        <div id="kira-quick-list" hidden style="display:none;flex-wrap:wrap;gap:6px;padding:8px 10px;max-height:112px;overflow-y:auto;"></div>
+      </div>
+      <div id="ai-chat-messages" style="display:flex;flex:1;min-height:0;overflow-y:auto;flex-direction:column;gap:9px;padding:12px;background:#1e1e1e;font-size:12px;"></div>
+      <div style="display:flex;gap:6px;padding:10px;background:#292929;border-top:1px solid #3b3b3b;">
+        <input id="ai-chat-input" type="text" maxlength="2000" placeholder="Tanyakan sesuatu kepada Kira..." onkeydown="handleAIChatKeyPress(event)" style="min-width:0;flex:1;background:#111;color:#fff;border:1px solid #444;border-radius:7px;padding:9px;font-size:12px;">
+        <button id="ai-chat-send-btn" type="button" onclick="sendMessagetoAI()" style="background:#d4af37;color:#111;border:0;border-radius:7px;padding:0 13px;font-weight:700;cursor:pointer;">Kirim</button>
+      </div>
+      <div style="padding:0 10px 8px;background:#292929;color:#888;font-size:9px;">Panduan lokal aplikasi. Tidak terhubung ke layanan AI eksternal. Jangan kirim kata sandi atau data rahasia.</div>
+    </div>
+    <div id="panel-chat-user" style="display:none;flex:1;min-height:0;flex-direction:column;">
+      <div style="padding:9px;background:#252525;border-bottom:1px solid #333;display:flex;flex-direction:column;gap:5px;">
+        <label for="user-chat-target" style="font-size:11px;color:#bbb;">Percakapan / Kirim ke:</label>
+        <select id="user-chat-target" style="background:#111;color:#fff;border:1px solid #444;padding:8px;border-radius:6px;font-size:12px;">
+          <option value="__broadcast__">📢 Semua Pengguna (Broadcast)</option>
         </select>
+      </div>
+      <div id="chat-conversation-section" style="background:#202020;border-bottom:1px solid #333;flex:0 0 auto;">
+        <button type="button" id="chat-conversation-toggle" aria-expanded="false" style="width:100%;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:9px 11px;background:#242424;border:0;color:#d8bd62;text-align:left;cursor:pointer;font-size:10px;font-weight:700;">
+          <span>👥 DAFTAR PENGGUNA <span id="chat-conversation-unread-count" style="color:#ff7777;font-weight:600;">(0 belum dibaca)</span></span><span id="chat-conversation-chevron">＋</span>
+        </button>
+        <div id="chat-conversation-list" hidden style="display:none;max-height:118px;overflow-y:auto;background:#202020;padding:5px 8px;"></div>
+      </div>
+      <div id="user-chat-messages" style="display:flex;flex:1;min-height:0;flex-direction:column;gap:8px;padding:10px;overflow-y:auto;font-size:12px;background:#1e1e1e;">
+        <div style="color:#888;text-align:center;margin:auto;">Pilih penerima untuk memulai percakapan.</div>
+      </div>
+      <div style="display:flex;gap:6px;padding:10px;background:#292929;border-top:1px solid #3b3b3b;">
+        <input type="text" id="user-chat-input" maxlength="3000" placeholder="Tulis pesan..." style="min-width:0;flex:1;background:#111;border:1px solid #444;color:#fff;padding:9px;border-radius:7px;font-size:12px;">
+        <button id="user-chat-send-btn" type="button" onclick="sendUserMessage()" style="background:#d4af37;border:0;color:#111;padding:7px 13px;border-radius:7px;cursor:pointer;font-weight:700;">Kirim</button>
+      </div>
     </div>
-
-    <!-- Area Riwayat Pesan Chat Antar User -->
-    <div id="user-chat-messages" style="flex: 1; padding: 10px; overflow-y: auto; font-size: 12px; background: #1e1e1e;">
-        <!-- Pesan antar user akan muncul di sini -->
-    </div>
-
-    <!-- Area Input Pesan -->
-    <div style="padding: 10px; background: #2c2c2c; display: flex; gap: 5px;">
-        <input type="text" id="user-chat-input" placeholder="Tulis pesan ke user..." style="flex: 1; background: #111; border: 1px solid #444; color: #fff; padding: 6px; border-radius: 4px; font-size: 12px;">
-        <button type="button" onclick="sendUserMessage()" style="background: #f39c12; border: none; color: #fff; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-weight: bold;">Kirim</button>
-    </div>
-</div>
-        </div>
-    </div>
+  </div>
 </div>
 
 <script>
-    // Tambahkan event listener untuk kirim pesan dengan Enter
-document.addEventListener("DOMContentLoaded", function() {
-    const userChatInput = document.getElementById('user-chat-input');
-    if (userChatInput) {
-        userChatInput.addEventListener('keypress', function (e) {
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                sendUserMessage();
-            }
-        });
-    }
-});
-  // Script mandiri untuk mengontrol buka/tutup chat tanpa bergantung pada atribut onclick HTML
-  document.addEventListener("DOMContentLoaded", () => {
-      const toggleBtn = document.getElementById("ai-chat-toggle-btn");
-      const closeBtn = document.getElementById("ai-chat-close-btn");
-      const chatBox = document.getElementById("ai-chat-box");
+// ================= KIRA PANDUAN MANDIRI + REALTIME USER CHAT =================
+// Kira berjalan lokal di browser berdasarkan panduan dan aturan aplikasi. Tidak memakai API AI eksternal.
+let chatMessageUnsub = null;
+let chatPrivateNotifUnsub = null;
+let chatBroadcastNotifUnsub = null;
+let chatReadAt = null;
+let chatReadBySender = {};
+let chatIncomingById = new Map();
+let chatUnreadIds = new Set();
+let chatUnreadInitialized = false;
+let chatCurrentMessages = [];
+let chatListenersReadyFor = null;
+let chatWidgetInitialized = false;
 
-      if (toggleBtn && chatBox) {
-          toggleBtn.addEventListener("click", () => {
-              if (chatBox.style.display === "none" || chatBox.style.display === "") {
-                  chatBox.style.display = "flex";
-              } else {
-                  chatBox.style.display = "none";
-              }
-          });
-      }
-
-      if (closeBtn && chatBox) {
-          closeBtn.addEventListener("click", () => {
-              chatBox.style.display = "none";
-          });
-      }
-  });
-
-  // Fungsi cadangan global
-  function toggleAIChat() {
-      const chatBox = document.getElementById("ai-chat-box");
-      if (chatBox) {
-          chatBox.style.display = (chatBox.style.display === "none" || chatBox.style.display === "") ? "flex" : "none";
-      }
-  }
-</script>
-<script>
-  // Fungsi Utama Mengirim Pesan & Mendapatkan Respons AI
-  window.sendMessagetoAI = async function() {
-      const chatInput = document.getElementById('ai-chat-input');
-      const chatContainer = document.getElementById('ai-chat-messages');
-      if (!chatInput || !chatContainer) return;
-
-      const text = chatInput.value.trim();
-      if (!text) return;
-
-      // 1. Tampilkan pesan user di layar
-      const userMsgEl = document.createElement('div');
-      userMsgEl.className = 'bg-amber-600/30 p-2 rounded-lg max-w-[85%] self-end text-white';
-      userMsgEl.innerText = text;
-      chatContainer.appendChild(userMsgEl);
-      chatInput.value = "";
-      chatContainer.scrollTop = chatContainer.scrollHeight;
-
-      // 2. Tampilkan indikator "Sedang mengetik..."
-      const typingEl = document.createElement('div');
-      typingEl.id = 'ai-typing-indicator';
-      typingEl.className = 'bg-zinc-800 p-2 rounded-lg max-w-[85%] text-sub italic';
-      typingEl.innerText = 'Asisten AI sedang mengetik...';
-      chatContainer.appendChild(typingEl);
-      chatContainer.scrollTop = chatContainer.scrollHeight;
-
-      // 3. Panggil backend serverless Vercel (/api/chat)
-      let aiReplyText = "Maaf, terjadi kesalahan.";
-      try {
-          const response = await fetch('/api/chat', {
-              method: 'POST',
-              headers: {
-                  'Content-Type': 'application/json'
-              },
-              body: JSON.stringify({ message: text })
-          });
-
-          const data = await response.json();
-          if (response.ok && data.reply) {
-              aiReplyText = data.reply;
-          } else {
-              aiReplyText = data.error || "Fungsi AI belum terhubung dengan benar.";
-          }
-      } catch (err) {
-          aiReplyText = "Gagal memuat respons AI karena gangguan koneksi.";
-      }
-
-      // Hapus indikator mengetik
-      const indicator = document.getElementById('ai-typing-indicator');
-      if (indicator) indicator.remove();
-
-      // 4. Tampilkan balasan AI di layar
-      const aiMsgEl = document.createElement('div');
-      aiMsgEl.className = 'bg-zinc-800 p-2 rounded-lg max-w-[85%] text-white';
-      aiMsgEl.innerText = aiReplyText;
-      chatContainer.appendChild(aiMsgEl);
-      chatContainer.scrollTop = chatContainer.scrollHeight;
-  };
-
-  // Fungsi tombol Enter pada keyboard
-  function handleAIChatKeyPress(event) {
-      if (event.key === 'Enter') {
-          event.preventDefault();
-          window.sendMessagetoAI();
-      }
-  }
-  let unreadCount = 0;
-
-// 1. Fungsi yang dipanggil ketika ada pesan masuk baru dari user lain
-function handleNewIncomingMessage(senderName, messageText) {
-    const chatBox = document.getElementById('ai-chat-box'); // Sesuaikan dengan ID kotak chat Anda
-    
-    // Cek apakah panel chat sedang tertutup
-    const isChatClosed = !chatBox || chatBox.style.display === 'none' || chatBox.style.display === '';
-
-    if (isChatClosed) {
-        unreadCount++;
-        
-        // Tampilkan badge angka di tombol chat
-        const badge = document.getElementById('chat-notification-badge');
-        if (badge) {
-            badge.textContent = unreadCount;
-            badge.style.display = 'inline-block';
-        }
-
-        // Panggil notifikasi desktop browser (opsional)
-        showBrowserNotification(senderName, messageText);
-    }
+function chatTimestamp(value) {
+  if (!value) return 0;
+  if (typeof value.toMillis === 'function') return value.toMillis();
+  if (value instanceof Date) return value.getTime();
+  if (typeof value === 'number') return value;
+  return 0;
 }
-
-// 2. Fungsi untuk memunculkan pop-up notifikasi desktop/browser
+function chatSafeText(el, text) { el.textContent = String(text || ''); }
+function updateChatBadge() {
+  const badge = document.getElementById('chat-notification-badge');
+  if (!badge) return;
+  const count = chatUnreadIds.size;
+  badge.textContent = count > 99 ? '99+' : String(count);
+  badge.style.display = count ? 'inline-block' : 'none';
+}
+function isChatWidgetOpen() {
+  const box = document.getElementById('ai-chat-box');
+  return !!box && box.style.display !== 'none' && box.style.display !== '';
+}
 function showBrowserNotification(senderName, messageText) {
-    if ("Notification" in window) {
-        if (Notification.permission === "granted") {
-            new Notification(`Pesan baru dari ${senderName}`, {
-                body: messageText,
-                icon: '/logo.png' // Sesuaikan path logo aplikasi Anda
-            });
-        } else if (Notification.permission !== "denied") {
-            Notification.requestPermission().then(permission => {
-                if (permission === "granted") {
-                    new Notification(`Pesan baru dari ${senderName}`, {
-                        body: messageText,
-                        icon: '/logo.png'
-                    });
-                }
-            });
-        }
-    }
+  if (!('Notification' in window) || Notification.permission !== 'granted' || document.visibilityState === 'visible') return;
+  try { new Notification('Pesan baru dari ' + senderName, { body: String(messageText || '').slice(0, 140) }); }
+  catch (err) { console.warn('Notifikasi browser tidak dapat ditampilkan:', err); }
+}
+function chatSenderKey(message) { return String(message.senderUid || message.senderUsername || 'unknown'); }
+function isChatMessageUnread(message) {
+  if (!message || message.senderUsername === currentUser?.username) return false;
+  const key = chatSenderKey(message);
+  return chatTimestamp(message.createdAt) > chatTimestamp(chatReadBySender[key] || chatReadAt);
+}
+function refreshChatUnreadState() {
+  chatUnreadIds.clear();
+  chatIncomingById.forEach((message, id) => { if (isChatMessageUnread(message)) chatUnreadIds.add(id); });
+  updateChatBadge();
+  renderChatConversationList();
+}
+function registerChatIncoming(message, docId) {
+  if (!currentUser || !message || message.senderUsername === currentUser.username) return;
+  chatIncomingById.set(docId, message);
+  if (isChatMessageUnread(message) && !chatUnreadIds.has(docId)) {
+    const sender = message.senderName || message.senderUsername || 'Pengguna';
+    if (!isChatWidgetOpen()) showBrowserNotification(sender, message.text);
+  }
+  refreshChatUnreadState();
+}
+async function markChatAsRead() {
+  if (!currentUser || !auth.currentUser) return;
+  const target = document.getElementById('user-chat-target')?.value || '__broadcast__';
+  const now = firebase.firestore.Timestamp.now();
+  const keysToMark = new Set();
+  chatCurrentMessages.forEach(message => {
+    if (message.senderUsername === currentUser.username) return;
+    if (target === '__broadcast__' || message.senderUsername === target) keysToMark.add(chatSenderKey(message));
+  });
+  if (!keysToMark.size) return;
+  keysToMark.forEach(key => { chatReadBySender[key] = now; });
+  refreshChatUnreadState();
+  const update = { uid: auth.currentUser.uid, updatedAt: firebase.firestore.FieldValue.serverTimestamp() };
+  keysToMark.forEach(key => { update[`lastReadBySender.${key}`] = now; });
+  try {
+    await db.collection('chat_reads').doc(auth.currentUser.uid).set(update, { merge: true });
+  } catch (err) { console.warn('Status baca chat belum dapat disimpan:', err); }
+}
+function renderChatConversationList() {
+  const host = document.getElementById('chat-conversation-list');
+  const select = document.getElementById('user-chat-target');
+  if (!host || !select) return;
+  host.replaceChildren();
+  const unreadSenders = new Set();
+  [...chatIncomingById.values()].forEach(message => {
+    if (isChatMessageUnread(message)) unreadSenders.add(message.type === 'broadcast' ? '__broadcast__' : message.senderUsername);
+  });
+  const unreadLabel = document.getElementById('chat-conversation-unread-count');
+  if (unreadLabel) unreadLabel.textContent = `(${unreadSenders.size} pengirim belum dibaca)`;
+  [...select.options].forEach(option => {
+    const target = option.value;
+    const row = document.createElement('button');
+    row.type = 'button';
+    row.style.cssText = `width:100%;display:flex;align-items:center;gap:8px;text-align:left;padding:7px 8px;border:0;border-radius:6px;margin-bottom:3px;background:${select.value === target ? '#3a3320' : 'transparent'};color:#eee;cursor:pointer;font-size:11px;`;
+    const dot = document.createElement('span');
+    const unread = [...chatIncomingById.values()].some(message => {
+      if (!isChatMessageUnread(message)) return false;
+      return target === '__broadcast__' ? message.recipientUsername === '__broadcast__' : message.senderUsername === target && message.type !== 'broadcast';
+    });
+    dot.style.cssText = `width:8px;height:8px;flex:0 0 8px;border-radius:50%;background:${unread ? '#ef4444' : '#555'};box-shadow:${unread ? '0 0 7px #ef4444' : 'none'};`;
+    const label = document.createElement('span'); label.textContent = option.textContent;
+    label.style.flex = '1';
+    row.append(dot, label);
+    row.addEventListener('click', () => { select.value = target; stopConversationListener(); startConversationListener(); renderChatConversationList(); });
+    host.appendChild(row);
+  });
+}
+function renderUserChatMessages(messages) {
+  const container = document.getElementById('user-chat-messages');
+  if (!container) return;
+  container.replaceChildren();
+  if (!messages.length) {
+    const empty = document.createElement('div');
+    empty.style.cssText = 'color:#888;text-align:center;margin:auto;';
+    empty.textContent = 'Belum ada pesan. Mulai percakapan di sini.';
+    container.appendChild(empty); return;
+  }
+  messages.forEach(msg => {
+    const mine = msg.senderUsername === currentUser?.username;
+    const wrap = document.createElement('div');
+    wrap.style.cssText = `display:flex;flex-direction:column;align-items:${mine ? 'flex-end' : 'flex-start'};width:100%;`;
+    const bubble = document.createElement('div');
+    bubble.style.cssText = `max-width:88%;padding:8px 10px;border-radius:9px;background:${mine ? '#254735' : '#303030'};color:#f3f3f3;overflow-wrap:anywhere;white-space:pre-wrap;`;
+    const sender = document.createElement('strong');
+    sender.style.cssText = 'display:block;font-size:10px;color:#e0c36d;margin-bottom:3px;';
+    sender.textContent = mine ? 'Anda' : (msg.senderName || msg.senderUsername || 'Pengguna');
+    const body = document.createElement('div'); body.textContent = msg.text || '';
+    const time = document.createElement('div');
+    time.style.cssText = 'font-size:9px;color:#aaa;text-align:right;margin-top:4px;';
+    const ms = chatTimestamp(msg.createdAt);
+    time.textContent = ms ? new Date(ms).toLocaleString('id-ID', {day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}) : 'Baru saja';
+    bubble.append(sender, body, time); wrap.appendChild(bubble); container.appendChild(wrap);
+  });
+  container.scrollTop = container.scrollHeight;
+}
+function stopConversationListener() {
+  if (chatMessageUnsub) { chatMessageUnsub(); chatMessageUnsub = null; }
+  chatListenersReadyFor = null;
+}
+function startConversationListener() {
+  if (!currentUser || !auth.currentUser) return;
+  const target = document.getElementById('user-chat-target')?.value || '__broadcast__';
+  const listenerKey = currentUser.username + '|' + target;
+  if (chatListenersReadyFor === listenerKey) return;
+  stopConversationListener(); chatListenersReadyFor = listenerKey;
+  let query = db.collection('chat_messages');
+  if (target === '__broadcast__') query = query.where('recipientUsername', '==', '__broadcast__');
+  else query = query.where('participantUids', 'array-contains', auth.currentUser.uid);
+  chatMessageUnsub = query.limit(150).onSnapshot(snapshot => {
+    const list = [];
+    snapshot.forEach(doc => {
+      const data = { id: doc.id, ...doc.data() };
+      if (target === '__broadcast__') list.push(data);
+      else if (data.participants?.includes(target) && data.participants?.includes(currentUser.username)) list.push(data);
+    });
+    list.sort((a,b) => chatTimestamp(a.createdAt) - chatTimestamp(b.createdAt));
+    chatCurrentMessages = list;
+    renderUserChatMessages(list);
+    if (isChatWidgetOpen() && document.getElementById('panel-chat-user')?.style.display !== 'none') markChatAsRead();
+  }, err => {
+    console.error('Gagal memuat percakapan:', err);
+    const el = document.getElementById('user-chat-messages');
+    if (el) el.textContent = 'Chat belum dapat dimuat. Periksa Firestore Security Rules untuk koleksi chat_messages.';
+  });
+}
+function initChatRealtime() {
+  if (!currentUser || !auth.currentUser) return;
+  loadChatUsers();
+  if (chatPrivateNotifUnsub) chatPrivateNotifUnsub();
+  if (chatBroadcastNotifUnsub) chatBroadcastNotifUnsub();
+  chatUnreadIds = new Set(); chatIncomingById = new Map(); chatUnreadInitialized = false;
+  db.collection('chat_reads').doc(auth.currentUser.uid).get().then(doc => {
+    chatReadBySender = doc.exists ? (doc.data().lastReadBySender || {}) : {};
+    chatReadAt = doc.exists ? (doc.data().lastReadAt || null) : null;
+  }).catch(() => { chatReadBySender = {}; chatReadAt = null; }).finally(() => {
+    const privateQuery = db.collection('chat_messages').where('participantUids', 'array-contains', auth.currentUser.uid).limit(150);
+    const broadcastQuery = db.collection('chat_messages').where('recipientUsername', '==', '__broadcast__').limit(150);
+    const processUnread = (snapshot) => {
+      snapshot.forEach(doc => registerChatIncoming(doc.data(), doc.id));
+      chatUnreadInitialized = true; refreshChatUnreadState();
+    };
+    chatPrivateNotifUnsub = privateQuery.onSnapshot(processUnread, err => console.error('Chat pribadi realtime:', err));
+    chatBroadcastNotifUnsub = broadcastQuery.onSnapshot(processUnread, err => console.error('Chat broadcast realtime:', err));
+    startConversationListener();
+  });
+}
+function loadChatUsers() {
+  const select = document.getElementById('user-chat-target');
+  if (!select || !currentUser) return;
+  const previous = select.value || '__broadcast__';
+  select.replaceChildren();
+  const broadcast = document.createElement('option');
+  broadcast.value = '__broadcast__'; broadcast.textContent = '📢 Semua Pengguna (Broadcast)'; select.appendChild(broadcast);
+  Object.entries(usersDatabase || {}).sort((a,b) => (a[1]?.fullname || a[0]).localeCompare(b[1]?.fullname || b[0])).forEach(([username, user]) => {
+    if (!user || username === currentUser.username) return;
+    const option = document.createElement('option'); option.value = username;
+    option.textContent = `${user.fullname || username}${user.roleTitle ? ' · ' + user.roleTitle : ''}`;
+    select.appendChild(option);
+  });
+  select.value = [...select.options].some(o => o.value === previous) ? previous : '__broadcast__';
+  renderChatConversationList();
+}
+window.sendUserMessage = async function() {
+  const input = document.getElementById('user-chat-input');
+  const text = input?.value.trim();
+  if (!text) return;
+  if (!currentUser || !auth.currentUser) { alert('Silakan login kembali untuk mengirim pesan.'); return; }
+  const target = document.getElementById('user-chat-target')?.value || '__broadcast__';
+  const button = document.getElementById('user-chat-send-btn');
+  if (button) { button.disabled = true; button.textContent = '...'; }
+  try {
+    const participants = target === '__broadcast__' ? [] : [currentUser.username, target].sort();
+    const recipientUid = target === '__broadcast__' ? null : (usersDatabase[target]?.uid || null);
+    if (target !== '__broadcast__' && !recipientUid) throw new Error('UID penerima tidak ditemukan. Muat ulang aplikasi atau hubungi administrator.');
+    const participantUids = target === '__broadcast__' ? [] : [auth.currentUser.uid, recipientUid].sort();
+    await db.collection('chat_messages').add({
+      senderUsername: currentUser.username,
+      senderName: currentUser.fullname || currentUser.username,
+      senderUid: auth.currentUser.uid,
+      recipientUsername: target,
+      recipientName: target === '__broadcast__' ? 'Semua Pengguna' : (usersDatabase[target]?.fullname || target),
+      participants,
+      participantUids,
+      recipientUid,
+      text,
+      type: target === '__broadcast__' ? 'broadcast' : 'private',
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    input.value = '';
+  } catch (err) {
+    console.error('Gagal mengirim chat:', err);
+    alert('Pesan belum terkirim. Periksa koneksi dan Firestore Security Rules untuk chat_messages.');
+  } finally { if (button) { button.disabled = false; button.textContent = 'Kirim'; } }
+};
+function switchChatTab(tab) {
+  const aiPanel = document.getElementById('panel-chat-ai');
+  const userPanel = document.getElementById('panel-chat-user');
+  const aiBtn = document.getElementById('tab-btn-ai');
+  const userBtn = document.getElementById('tab-btn-user');
+  if (!aiPanel || !userPanel || !aiBtn || !userBtn) return;
+  const isAI = tab === 'ai';
+  aiPanel.style.display = isAI ? 'flex' : 'none'; userPanel.style.display = isAI ? 'none' : 'flex';
+  aiBtn.style.color = isAI ? '#d4af37' : '#999'; aiBtn.style.borderBottom = isAI ? '2px solid #d4af37' : '2px solid transparent'; aiBtn.style.background = isAI ? '#242424' : '#191919';
+  userBtn.style.color = isAI ? '#999' : '#d4af37'; userBtn.style.borderBottom = isAI ? '2px solid transparent' : '2px solid #d4af37'; userBtn.style.background = isAI ? '#191919' : '#242424';
+  if (!isAI) { startConversationListener(); renderChatConversationList(); }
+}
+function appendKiraMessage(text, fromUser) {
+  const container = document.getElementById('ai-chat-messages'); if (!container) return;
+  const bubble = document.createElement('div');
+  bubble.style.cssText = `align-self:${fromUser ? 'flex-end' : 'flex-start'};max-width:90%;padding:9px 11px;border-radius:10px;background:${fromUser ? '#59451b' : '#303030'};color:#f5f5f5;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.5;`;
+  if (!fromUser) { const label = document.createElement('strong'); label.textContent = 'Kira'; label.style.cssText = 'display:block;color:#e0c36d;margin-bottom:4px;'; bubble.appendChild(label); }
+  const body = document.createElement('span'); body.textContent = text; bubble.appendChild(body); container.appendChild(bubble); container.scrollTop = container.scrollHeight;
+}
+// Pengetahuan Kira disusun dari menu, label, dan alur kerja yang tertanam di aplikasi.
+const KIRA_KNOWLEDGE = [
+{keys:['mulai','panduan','cara menggunakan','penggunaan aplikasi','fitur aplikasi'],answer:`KDP DOKU SIGN adalah sistem otorisasi dokumen dan tanda tangan berjenjang. Alur umum: login → Ringkasan → Buat Permintaan Tanda Tangan → pilih jenis dokumen → unggah PDF → pihak berwenang memeriksa dan memberi otorisasi → pantau status di Ringkasan atau Dokumen Saya. Menu utama: Ringkasan, Dokumen Saya, Menunggu Saya, Utilitas PDF, Manajemen User (khusus Administrator/KDP Kabag/Pimpinan MR), Direktori Kontak, Profil Saya, dan Pengaturan.`},
+{keys:['login','masuk','username','email','kata sandi','password','lupa password'],answer:`Untuk masuk, isi Username atau Email dengan akun terdaftar, masukkan kata sandi, lalu klik Masuk ke Sistem. Jika gagal, periksa ejaan username/email, kata sandi, dan koneksi internet. Jika lupa kata sandi atau akun bermasalah, hubungi Administrator. Jangan kirim kata sandi atau OTP melalui chat.`},
+{keys:['upload','unggah','pengajuan','buat dokumen','kirim dokumen','permintaan tanda tangan'],answer:`Cara mengajukan dokumen: 1) Klik “+ Buat Permintaan Tanda Tangan” di Ringkasan. 2) Isi Judul Dokumen (opsional; jika kosong memakai nama file). 3) Pilih Jenis Dokumen & Otorisasi. 4) Pilih atau seret file PDF ke area unggah. 5) Klik Kirim Pengajuan dan tunggu sampai selesai. Jenis dokumen: KDP (2 Staff KDP → Kabag → Pimpinan), Kasir (Kasir → Kabag → Pimpinan), ADMKDP (Admin KDP → Kabag → Pimpinan), Pihak Ketiga (2 Staff KDP → Kabag → Pimpinan), Lain-lain (review Staff KDP opsional; Kabag dapat langsung → Pimpinan).`},
+{keys:['approval','otorisasi','setujui','menyetujui','tanda tangan','ttd','paraf','stempel','menunggu saya','verifikasi','review'],answer:`Untuk memproses dokumen, buka Menunggu Saya, pilih dokumen yang menjadi giliran Anda, periksa/preview PDF, lalu tempatkan paraf, tanda tangan, tanggal, atau anotasi sesuai kebutuhan dan lanjutkan persetujuan. Alur KDP/Pihak Ketiga: 2 Staff KDP wajib; setelah dua persetujuan masuk tahap KDP Kabag (Staff ke-3 masih dapat review), lalu Pimpinan MR. Alur Kasir/ADMKDP: Kasir/Admin KDP → KDP Kabag → Pimpinan MR. Alur Lain-lain: Staff KDP opsional; KDP Kabag dapat langsung memproses → Pimpinan MR. Selesai setelah persetujuan Pimpinan MR.`},
+{keys:['tolak','ditolak','penolakan','reject','revisi dokumen'],answer:`Jika dokumen tidak dapat disetujui, gunakan tindakan penolakan pada layar proses dan isi alasan dengan jelas sebelum konfirmasi. Status menjadi “Ditolak: [alasan]”. Pengaju dapat melihat status tersebut. Dokumen ditolak memiliki masa retensi 5 hari sebelum penghapusan otomatis.`},
+{keys:['status','timeline','ringkasan','jumlah dokumen','proses dokumen','selesai'],answer:`Ringkasan menampilkan Total Dokumen, Dalam Proses, Perlu Tindakan, Ditolak, dan Selesai. Klik kartu statistik untuk memfilter tabel; bagian bawah menampilkan Timeline Aktivitas Terbaru. Dokumen Saya menampilkan dokumen yang Anda ajukan. Menunggu Saya menampilkan dokumen yang membutuhkan tindakan akun Anda.`},
+{keys:['gabung pdf','merge','menggabungkan pdf','atur halaman','susun halaman','hapus halaman','urutan halaman','utilitas pdf'],answer:`Utilitas PDF memiliki dua fitur. Gabung PDF: pilih beberapa PDF, tambahkan file bila perlu, susun urutan kartu dengan drag & drop atau tombol geser, lalu klik Gabungkan PDF. Setelah selesai, hasil dapat diunduh atau diteruskan ke proses tanda tangan. Atur Halaman PDF: pilih satu PDF, susun ulang thumbnail dengan drag & drop, atau hapus halaman melalui tombol ✕. Jika diteruskan ke approval, isi judul dan pilih jenis/alur otorisasi.`},
+{keys:['cloud','penyimpanan','storage','cloudinary','r2','supabase','ukuran file','5 mb','15 mb','file besar'],answer:`Penyimpanan dipilih otomatis berdasarkan ukuran file final. Satu file hanya masuk ke satu provider: sampai 5 MiB menggunakan Cloudinary; lebih dari 5 sampai 15 MiB menggunakan Cloudflare R2; lebih dari 15 MiB menggunakan Supabase. Pengguna cukup mengunggah file melalui aplikasi.`},
+{keys:['retensi','hapus otomatis','berapa lama','masa simpan','dokumen ditolak','dokumen selesai','5 hari','60 hari'],answer:`Aturan retensi aplikasi: dokumen ditolak dihapus otomatis setelah 5 hari; dokumen selesai/fully approved dihapus otomatis setelah 60 hari. Awal perhitungan mengikuti tanggal penolakan atau penyelesaian. Simpan salinan sesuai kebijakan kerja sebelum masa retensi berakhir.`},
+{keys:['profil','foto','avatar','warna tinta','warna stempel','ganti nama','jabatan','paraf saya','ttd saya'],answer:`Menu Profil Saya digunakan untuk melihat dan memperbarui data profil serta aset akun. Bagian yang tersedia mencakup nama/jabatan, foto profil, warna tinta/stempel, serta aset paraf dan tanda tangan. Klik Ganti pada bagian yang ingin diperbarui, lakukan perubahan, lalu simpan. Ikuti format file yang diminta pada kolom unggah.`},
+{keys:['manajemen user','tambah user','buat akun','edit user','pengguna baru','direktori kontak','kontak'],answer:`Manajemen User hanya dapat diakses Administrator, KDP Kabag, dan Pimpinan MR. Pengguna berwenang dapat menambah atau mengedit user. Form tambah user memuat nama lengkap, email, username, posisi/jabatan, warna tinta/stempel, kata sandi dan konfirmasi, serta PNG paraf dan TTD. Direktori Kontak menampilkan daftar kontak pengguna.`},
+{keys:['tema','mode gelap','mode terang','dark','light','pengaturan'],answer:`Buka Pengaturan Sistem & Tema, lalu pilih Mode Gelap atau Mode Terang.`},
+{keys:['chat','pesan','broadcast','notifikasi chat','kirim pesan','pengguna lain'],answer:`Tab Chat User untuk komunikasi antar pengguna. Pilih penerima pada Percakapan/Kirim ke. Pilihan Semua Pengguna (Broadcast) mengirim ke semua pengguna; memilih nama tertentu mengirim pesan pribadi. Badge dan notifikasi browser memberi tahu pesan masuk sesuai izin notifikasi browser.`},
+{keys:['error','gagal','tidak bisa','bermasalah','tidak muncul','loading','preview','pratinjau','unggah gagal'],answer:`Pemeriksaan awal: pastikan internet aktif; muat ulang halaman dan login kembali jika sesi berakhir; pastikan file PDF valid; buka ulang preview dan tunggu pemuatan; jangan klik persetujuan berulang kali sebelum memeriksa status dokumen. Catat pesan error dan waktu kejadian untuk Administrator. Untuk error teknis spesifik yang tidak dijelaskan panduan, Kira tidak akan menebak penyebabnya.`}
+];
+function kiraNormalize(text){return String(text||'').toLowerCase().replace(/[^\p{L}\p{N}\s]/gu,' ').replace(/\s+/g,' ').trim();}
+function kiraFindAnswer(question){const q=kiraNormalize(question);let best=null,scoreBest=0;for(const item of KIRA_KNOWLEDGE){let score=0;for(const key of item.keys){const k=kiraNormalize(key);if(q.includes(k))score+=Math.max(2,k.split(' ').length);else{const words=k.split(' ').filter(w=>w.length>3);if(words.length&&words.every(w=>q.includes(w)))score++;}}if(score>scoreBest){best=item;scoreBest=score;}}return scoreBest>=2?best.answer:`Saya belum menemukan jawaban yang tepat di panduan internal untuk pertanyaan itu. Coba gunakan kata kunci: unggah dokumen, alur tanda tangan, penolakan, status dokumen, gabung PDF, atur halaman, penyimpanan cloud, profil, atau retensi. Jika ini error teknis, kirim pesan error kepada Administrator agar diperiksa.`;}
+// Panduan khusus pengunjung: hanya membahas halaman sebelum login.
+const KIRA_GUEST_KNOWLEDGE = [
+  {keys:['tujuan','fungsi aplikasi','apa itu','tentang aplikasi','kdp doku sign','manfaat'], answer:'KDP DOKU SIGN adalah aplikasi untuk pengajuan, pemeriksaan, otorisasi berjenjang, dan tanda tangan dokumen secara digital. Pengguna dapat mengajukan dokumen sesuai jenisnya, lalu pihak yang berwenang memproses sesuai tahapan.'},
+  {keys:['login','masuk','username','email','kata sandi','password','akun','sandi'], answer:'Untuk login, masukkan username atau email yang sudah terdaftar pada kolom “Username atau Email”, masukkan kata sandi, lalu klik “Masuk ke Sistem”. Jika gagal, periksa kembali penulisan akun dan kata sandi. Jika tetap tidak bisa, hubungi Administrator. Jangan pernah membagikan kata sandi atau OTP.'},
+  {keys:['daftar','registrasi','register','buat akun','akun baru','pendaftaran'], answer:'Untuk mendaftar, klik “Daftar Akun Baru” pada halaman login. Isi nama lengkap, email, username, posisi/jabatan, warna tinta/stempel, kata sandi dan konfirmasi. Unggah PNG paraf dan PNG tanda tangan jika diminta, lalu klik “Daftar Akun”. Jika pendaftaran tidak berhasil atau memerlukan otorisasi, hubungi Administrator.'},
+  {keys:['fitur','menu','apa saja','kemampuan','bisa apa'], answer:'Fitur utama setelah login meliputi Ringkasan, pengajuan dokumen, Dokumen Saya, Menunggu Saya, proses otorisasi dan tanda tangan, Utilitas PDF (Gabung PDF dan Atur Halaman), Direktori Kontak, Profil Saya, Pengaturan, serta Manajemen User sesuai hak akses. Untuk menjaga keamanan, detail dokumen dan proses internal hanya dapat diakses setelah login.'},
+  {keys:['lupa password','lupa kata sandi','reset password','password hilang'], answer:'Jika lupa kata sandi, silakan hubungi Administrator untuk bantuan pemulihan akun. Jangan mengirim kata sandi lama, OTP, atau informasi rahasia melalui chat.'},
+  {keys:['hubungi','kontak','administrator','bantuan','masalah login'], answer:'Jika mengalami kendala login atau pendaftaran, hubungi Administrator aplikasi melalui saluran komunikasi internal perusahaan. Sertakan username dan pesan kesalahan, tetapi jangan pernah mengirim kata sandi atau OTP.'}
+];
+function kiraFindGuestAnswer(question){
+  const q=kiraNormalize(question); let best=null, scoreBest=0;
+  for(const item of KIRA_GUEST_KNOWLEDGE){let score=0;for(const key of item.keys){const k=kiraNormalize(key);if(q.includes(k))score+=Math.max(2,k.split(' ').length);else{const words=k.split(' ').filter(w=>w.length>3);if(words.length&&words.every(w=>q.includes(w)))score++;}}if(score>scoreBest){best=item;scoreBest=score;}}
+  return scoreBest>=2 ? best.answer : 'Sebelum login, saya hanya dapat membantu pertanyaan tentang tujuan aplikasi, cara login, pendaftaran akun, lupa kata sandi, dan gambaran umum fitur. Silakan tanyakan salah satu topik tersebut. Untuk panduan penggunaan dokumen dan proses internal, silakan login terlebih dahulu.';
+}
+// Tombol pertanyaan cepat: pilihan berubah sesuai status login.
+const KIRA_GUEST_QUICK_QUESTIONS = [
+  'Apa tujuan aplikasi KDP DOKU SIGN?',
+  'Bagaimana cara login?',
+  'Bagaimana cara mendaftar akun baru?',
+  'Apa yang harus dilakukan jika lupa kata sandi?',
+  'Apa saja fitur yang tersedia setelah login?'
+];
+const KIRA_USER_QUICK_QUESTIONS = [
+  'Bagaimana cara mengajukan dokumen untuk tanda tangan?',
+  'Bagaimana alur otorisasi dokumen?',
+  'Bagaimana cara memproses dokumen yang menunggu saya?',
+  'Bagaimana cara memberi paraf dan tanda tangan?',
+  'Bagaimana cara melihat status dan riwayat dokumen?',
+  'Bagaimana cara menggabungkan beberapa file PDF?',
+  'Bagaimana cara mengatur atau mengurutkan halaman PDF?',
+  'Di mana dokumen saya disimpan dan berapa lama masa simpannya?',
+  'Bagaimana cara mengirim pesan ke pengguna lain?'
+];
+function renderKiraQuickQuestions(){
+  const list=document.getElementById('kira-quick-list');
+  const title=document.getElementById('kira-quick-title');
+  if(!list)return;
+  list.replaceChildren();
+  const questions=currentUser ? KIRA_USER_QUICK_QUESTIONS : KIRA_GUEST_QUICK_QUESTIONS;
+  if(title)title.textContent=currentUser ? 'PERTANYAAN PANDUAN' : 'PERTANYAAN SEBELUM LOGIN';
+  const countLabel=document.getElementById('kira-quick-count');
+  if(countLabel)countLabel.textContent=`(${questions.length} pertanyaan · klik untuk membuka)`;
+  questions.forEach(question=>{
+    const button=document.createElement('button');
+    button.type='button';
+    button.textContent=question;
+    button.style.cssText='background:#292929;color:#e7d99f;border:1px solid #65552b;border-radius:14px;padding:6px 9px;font-size:10px;line-height:1.35;text-align:left;cursor:pointer;max-width:100%;';
+    button.addEventListener('click',()=>{
+      const input=document.getElementById('ai-chat-input');
+      if(input)input.value=question;
+      window.sendMessagetoAI();
+    });
+    list.appendChild(button);
+  });
 }
 
-// 3. Meminta izin notifikasi browser saat halaman pertama kali dimuat
-document.addEventListener("DOMContentLoaded", function() {
-    if ("Notification" in window && Notification.permission !== "granted" && Notification.permission !== "denied") {
-        Notification.requestPermission();
-    }
-
-    // Reset hitungan notifikasi saat tombol chat diklik (dibuka)
-    const toggleBtn = document.getElementById('ai-chat-toggle-btn');
-    if (toggleBtn) {
-        toggleBtn.addEventListener('click', function() {
-            unreadCount = 0;
-            const badge = document.getElementById('chat-notification-badge');
-            if (badge) {
-                badge.style.display = 'none';
-            }
-        });
-    }
-});
+function clearKiraConversation(){
+  const container=document.getElementById('ai-chat-messages'); if(!container)return;
+  container.replaceChildren();
+  appendKiraMessage(currentUser ? 'Halo! Saya Kira, panduan penggunaan KDP DOKU SIGN. Silakan tanyakan fitur dan cara kerja aplikasi.' : 'Halo! Saya Kira. Saya dapat membantu menjelaskan tujuan aplikasi, cara login, pendaftaran akun, dan bantuan awal sebelum Anda masuk.', false);
+}
+function updateKiraAccessMode(resetConversation=true){
+  const userTab=document.getElementById('tab-btn-user');
+  const userPanel=document.getElementById('panel-chat-user');
+  const aiTab=document.getElementById('tab-btn-ai');
+  if(!currentUser){
+    if(userTab)userTab.style.display='none';
+    if(userPanel)userPanel.style.display='none';
+    if(aiTab)aiTab.style.flex='1';
+    switchChatTab('ai');
+  }else{
+    if(userTab)userTab.style.display='block';
+    if(userPanel)userPanel.style.display='none';
+    if(aiTab)aiTab.style.flex='1';
+    switchChatTab('ai');
+  }
+  const hint=document.querySelector('#panel-chat-ai > div:last-child');
+  if(hint)hint.textContent=currentUser ? 'Panduan lokal aplikasi. Tidak terhubung ke layanan AI eksternal. Jangan kirim kata sandi atau data rahasia.' : 'Mode pengunjung: tanyakan tujuan aplikasi, login, pendaftaran, atau bantuan awal. Chat antar pengguna tersedia setelah login.';
+  const input=document.getElementById('ai-chat-input');
+  if(input)input.placeholder=currentUser ? 'Tanyakan panduan penggunaan aplikasi...' : 'Tanyakan tentang login, daftar, atau aplikasi...';
+  renderKiraQuickQuestions();
+  if(resetConversation)clearKiraConversation();
+}
+window.sendMessagetoAI=function(){
+  const input=document.getElementById('ai-chat-input'); const button=document.getElementById('ai-chat-send-btn');
+  const question=input?.value.trim(); if(!question)return;
+  input.value=''; appendKiraMessage(question,true); if(button)button.disabled=true;
+  const answer=currentUser ? kiraFindAnswer(question) : kiraFindGuestAnswer(question);
+  window.setTimeout(()=>{appendKiraMessage(answer,false);if(button)button.disabled=false;input?.focus();},100);
+};
+function handleAIChatKeyPress(event) { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); window.sendMessagetoAI(); } }
+function initChatWidget() {
+  if (chatWidgetInitialized) return; chatWidgetInitialized = true;
+  updateKiraAccessMode(true);
+  const box = document.getElementById('ai-chat-box');
+  document.getElementById('ai-chat-toggle-btn')?.addEventListener('click', () => {
+    if (!box) return;
+    box.style.display = box.style.display === 'none' || !box.style.display ? 'flex' : 'none';
+    if (isChatWidgetOpen() && document.getElementById('panel-chat-user')?.style.display !== 'none') startConversationListener();
+  });
+  document.getElementById('ai-chat-close-btn')?.addEventListener('click', () => { if (box) box.style.display = 'none'; });
+  const quickToggle = document.getElementById('kira-quick-toggle');
+  const quickList = document.getElementById('kira-quick-list');
+  quickToggle?.addEventListener('click', () => {
+    if (!quickList) return;
+    const open = quickList.style.display === 'none' || !quickList.style.display;
+    quickList.style.display = open ? 'flex' : 'none';
+    quickList.hidden = !open;
+    quickToggle.setAttribute('aria-expanded', String(open));
+    const chevron = document.getElementById('kira-quick-chevron');
+    if (chevron) chevron.textContent = open ? '−' : '＋';
+  });
+  const conversationToggle = document.getElementById('chat-conversation-toggle');
+  const conversationList = document.getElementById('chat-conversation-list');
+  conversationToggle?.addEventListener('click', () => {
+    if (!conversationList) return;
+    const open = conversationList.style.display === 'none' || !conversationList.style.display;
+    conversationList.style.display = open ? 'block' : 'none';
+    conversationList.hidden = !open;
+    conversationToggle.setAttribute('aria-expanded', String(open));
+    const chevron = document.getElementById('chat-conversation-chevron');
+    if (chevron) chevron.textContent = open ? '−' : '＋';
+  });
+  document.getElementById('user-chat-target')?.addEventListener('change', () => { stopConversationListener(); startConversationListener(); });
+  document.getElementById('user-chat-input')?.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); window.sendUserMessage(); } });
+  if ('Notification' in window && Notification.permission === 'default') {
+    // Minta izin notifikasi setelah pengguna membuka widget, bukan otomatis saat halaman dimuat.
+    document.getElementById('ai-chat-toggle-btn')?.addEventListener('click', () => {
+      if (Notification.permission === 'default') Notification.requestPermission();
+    });
+  }
+}
+document.addEventListener('DOMContentLoaded', initChatWidget);
 </script>
 </body>
 </html>
