@@ -133,6 +133,24 @@
         @keyframes approval-progress { 0% { transform: translateX(-120%); } 100% { transform: translateX(300%); } }
     </style>
 
+    <!-- Fallback kritis: kelas hidden wajib tetap bekerja meskipun Tailwind CDN gagal dimuat. -->
+    <style id="app-critical-fallback-css">
+      .hidden { display: none !important; }
+      [hidden] { display: none !important; }
+      body.auth-initializing #auth-screen,
+      body.auth-initializing #app-dashboard { display: none !important; }
+      body { min-height: 100vh; margin: 0; background: #0a0a0a; color: #e5e5e5; font-family: Inter, Arial, sans-serif; }
+      #auth-screen:not(.hidden) { min-height: 100vh; display: flex; align-items: center; justify-content: center; box-sizing: border-box; padding: 20px; }
+      #auth-screen:not(.hidden) > div { width: 100%; max-width: 390px; box-sizing: border-box; background: #141414; border: 1px solid #303030; border-radius: 20px; padding: 26px; box-shadow: 0 20px 55px rgba(0,0,0,.45); }
+      #auth-screen input:not([type="color"]), #auth-screen select { box-sizing: border-box; max-width: 100%; min-height: 40px; background: #e8efff; color: #111827; border: 1px solid #555; border-radius: 9px; padding: 8px 11px; }
+      #auth-screen button[type="submit"], #register-form-container > button { min-height: 42px; border: 0; border-radius: 9px; background: #f4d982; color: #111; font-weight: 700; padding: 9px 14px; cursor: pointer; }
+      #app-dashboard:not(.hidden) { display: flex; min-height: 100vh; width: 100%; }
+      #app-sidebar { box-sizing: border-box; }
+      #app-dashboard main { min-width: 0; }
+      #app-dashboard button, #app-dashboard input, #app-dashboard select, #app-dashboard textarea { font: inherit; }
+      @media (max-width: 767px) { #auth-screen:not(.hidden) { padding: 16px; } #auth-screen:not(.hidden) > div { padding: 22px 18px; } }
+    </style>
+
     <style>
       .pdf-page-canvas-wrapper {
         position: relative !important;
@@ -1161,16 +1179,37 @@
         appId: "1:397180096578:web:31823d4f2ce01ed73bdddb"
       };
 
-      // Inisialisasi Firebase & Firestore
-      firebase.initializeApp(firebaseConfig);
-      const db = firebase.firestore();
-      const auth = firebase.auth();
-      // Akun admin terpisah: pengguna cukup mengetik username 'admin'.
-      // Administrator menggunakan email resmi yang sudah dibuat di Firebase Authentication.
+      // Inisialisasi Firebase & Firestore secara defensif.
+      // Variabel selalu didefinisikan agar kegagalan CDN tidak berubah menjadi
+      // error lanjutan "authPersistenceReady is not defined" saat tombol login ditekan.
+      let db = null;
+      let auth = null;
       const ADMIN_AUTH_EMAIL = 'kdpnbk@gmail.com';
-      // Pastikan pengaturan sesi selesai sebelum proses login dimulai.
-      const authPersistenceReady = auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL)
-        .catch(err => { console.error("Gagal mengatur persistensi Auth:", err); });
+      let authPersistenceReady = Promise.resolve(false);
+      try {
+        if (!window.firebase || typeof firebase.initializeApp !== 'function') {
+          throw new Error('Firebase SDK tidak berhasil dimuat dari server.');
+        }
+        if (!firebase.apps || !firebase.apps.length) firebase.initializeApp(firebaseConfig);
+        db = firebase.firestore();
+        auth = firebase.auth();
+        authPersistenceReady = auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL)
+          .then(() => true)
+          .catch(async err => {
+            console.error('Gagal mengatur persistensi LOCAL:', err);
+            try {
+              await auth.setPersistence(firebase.auth.Auth.Persistence.SESSION);
+              console.warn('Firebase memakai persistensi SESSION sebagai fallback.');
+              return true;
+            } catch (fallbackErr) {
+              console.error('Persistensi Firebase tidak tersedia:', fallbackErr);
+              return false;
+            }
+          });
+      } catch (firebaseInitError) {
+        window.__KDP_FIREBASE_INIT_ERROR__ = firebaseInitError;
+        console.error('Inisialisasi Firebase gagal:', firebaseInitError);
+      }
     </script>
 <!-- Supabase JS Client SDK -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -1587,6 +1626,8 @@ function calculateRemainingDays(doc) {
             if (dashboard) dashboard.classList.add('hidden');
 
             try {
+                if (!auth || !db) throw new Error('Firebase SDK tidak tersedia. Periksa pemuatan script Firebase.');
+                await authPersistenceReady;
                 const authUser = await new Promise((resolve, reject) => {
                     let unsubscribe = null;
                     unsubscribe = auth.onAuthStateChanged(
@@ -1757,6 +1798,8 @@ function calculateRemainingDays(doc) {
             if (button) { button.disabled = true; button.textContent = 'Menyimpan...'; }
             let createdAuthUser = null;
             try {
+                if (!auth || !db) throw new Error('Firebase belum termuat. Muat ulang halaman dan periksa koneksi/CDN.');
+                await authPersistenceReady;
                 const userRef = db.collection('users').doc(username);
                 const existing = await userRef.get();
                 if (existing.exists || usersDatabase[username]) throw new Error('Username sudah terdaftar!');
@@ -1797,6 +1840,10 @@ function calculateRemainingDays(doc) {
                 localStorage.setItem('kdp_users_db', JSON.stringify(usersDatabase));
                 try { await saveStateToCloud(); } catch (syncErr) { console.warn('app_state tidak tersinkron:', syncErr); }
 
+                // createUserWithEmailAndPassword otomatis membuat sesi login.
+                // Akhiri sesi agar pendaftaran kembali ke form login, bukan dashboard.
+                try { await auth.signOut(); } catch (signOutErr) { console.warn('Sesi pendaftaran belum berhasil ditutup:', signOutErr); }
+
                 recordLog(`Mendaftarkan akun baru: ${fullname} (${user.roleTitle})`);
                 toggleAuthForm('login');
                 document.getElementById('login-username').value = email;
@@ -1818,6 +1865,7 @@ function calculateRemainingDays(doc) {
 
             const isAdministratorLogin = identifier.toLowerCase() === 'admin';
             try {
+                if (!auth || !db) throw new Error('Firebase SDK belum berhasil dimuat. Periksa koneksi internet atau akses ke www.gstatic.com, lalu muat ulang halaman.');
                 await authPersistenceReady;
                 let profile = null;
                 let profileRef = null;
@@ -2650,36 +2698,6 @@ function calculateRemainingDays(doc) {
             showToast('Nama dan Jabatan berhasil diperbarui!');
         }
 let isAIChatOpen = false;
-
-// Fungsi untuk Berpindah Tab (AI vs User Chat)
-function switchChatTab(tab) {
-    const aiPanel = document.getElementById('panel-chat-ai');
-    const userPanel = document.getElementById('panel-chat-user');
-    const aiBtn = document.getElementById('tab-btn-ai');
-    const userBtn = document.getElementById('tab-btn-user');
-
-    if (tab === 'ai') {
-        aiPanel.style.display = 'flex';
-        userPanel.style.display = 'none';
-        aiBtn.style.color = '#f39c12';
-        aiBtn.style.borderBottom = '2px solid #f39c12';
-        aiBtn.style.background = '#1e1e1e';
-        
-        userBtn.style.color = '#888';
-        userBtn.style.borderBottom = '2px solid transparent';
-        userBtn.style.background = '#222';
-    } else {
-        aiPanel.style.display = 'none';
-        userPanel.style.display = 'flex';
-        userBtn.style.color = '#27ae60';
-        userBtn.style.borderBottom = '2px solid #27ae60';
-        userBtn.style.background = '#1e1e1e';
-
-        aiBtn.style.color = '#888';
-        aiBtn.style.borderBottom = '2px solid transparent';
-        aiBtn.style.background = '#222';
-    }
-}
 
 // Fungsi sendUserMessage ditangani oleh modul chat real-time di bagian akhir dokumen.
         async function migrateLegacyProfileImageField(fieldName, category) {
@@ -4592,29 +4610,6 @@ async function compressAvatarImage(file) {
                 openPreview(doc.id);
             }, 100);
         }
-// Memuat penerima chat dari database pengguna lokal aplikasi.
-// Endpoint /api/users tidak tersedia pada server statis Live Server,
-// sehingga daftar penerima diambil dari usersDatabase yang sudah dipakai aplikasi.
-function loadChatUsers() {
-    const targetSelect = document.getElementById('user-chat-target');
-    if (!targetSelect) return;
-
-    targetSelect.innerHTML = '<option value="admin">Admin / All Users (Broadcast)</option>';
-    const userEntries = Object.entries(usersDatabase || {});
-
-    userEntries.forEach(([username, user]) => {
-        if (!user) return;
-        const option = document.createElement('option');
-        option.value = username;
-        option.textContent = user.fullname || user.name || user.email || username;
-        targetSelect.appendChild(option);
-    });
-}
-
-// Panggil fungsi saat halaman selesai dimuat
-document.addEventListener("DOMContentLoaded", function() {
-    loadChatUsers();
-});
         function openRejectModal() { document.getElementById('reject-reason-modal').classList.remove('hidden'); }
         async function submitDocumentRejection() {
             const reasonInput = document.getElementById('reject-reason-input');
