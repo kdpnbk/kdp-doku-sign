@@ -4826,6 +4826,10 @@ let chatBroadcastNotifUnsub = null;
 let chatReadAt = null;
 let chatReadBySender = {};
 let chatIncomingById = new Map();
+// Cache per-query dipisahkan agar dokumen yang dihapus dari Firestore
+// tidak tertinggal sebagai unread palsu di cache gabungan.
+let chatPrivateIncomingById = new Map();
+let chatBroadcastIncomingById = new Map();
 let chatUnreadIds = new Set();
 let chatUnreadInitialized = false;
 let chatCurrentMessages = [];
@@ -4849,9 +4853,20 @@ function chatSafeText(el, text) { el.textContent = String(text || ''); }
 function updateChatBadge() {
   const badge = document.getElementById('chat-notification-badge');
   if (!badge) return;
-  const count = chatUnreadIds.size;
+  // Satu badge mewakili percakapan/pengirim yang belum dibaca,
+  // bukan jumlah dokumen pesan atau cache lama.
+  const unreadConversations = new Set();
+  chatIncomingById.forEach(message => {
+    if (!isChatMessageUnread(message)) return;
+    if (!message.senderUsername || message.senderUsername === currentUser?.username) return;
+    unreadConversations.add(message.type === 'broadcast' || message.recipientUsername === '__broadcast__'
+      ? '__broadcast__'
+      : String(message.senderUid || message.senderUsername));
+  });
+  const count = unreadConversations.size;
   badge.textContent = count > 99 ? '99+' : String(count);
-  badge.style.display = count ? 'inline-block' : 'none';
+  badge.style.display = count > 0 ? 'inline-flex' : 'none';
+  badge.hidden = count === 0;
 }
 function isChatWidgetOpen() {
   const box = document.getElementById('ai-chat-box');
@@ -4957,7 +4972,10 @@ function renderChatConversationList() {
   host.replaceChildren();
   const unreadSenders = new Set();
   [...chatIncomingById.values()].forEach(message => {
-    if (isChatMessageUnread(message)) unreadSenders.add(message.type === 'broadcast' ? '__broadcast__' : message.senderUsername);
+    if (!isChatMessageUnread(message) || !message.senderUsername || message.senderUsername === currentUser?.username) return;
+    unreadSenders.add(message.type === 'broadcast' || message.recipientUsername === '__broadcast__'
+      ? '__broadcast__'
+      : String(message.senderUid || message.senderUsername));
   });
   const unreadLabel = document.getElementById('chat-conversation-unread-count');
   if (unreadLabel) unreadLabel.textContent = `(${unreadSenders.size} pengirim belum dibaca)`;
@@ -5042,7 +5060,11 @@ function initChatRealtime() {
   loadChatUsers();
   if (chatPrivateNotifUnsub) chatPrivateNotifUnsub();
   if (chatBroadcastNotifUnsub) chatBroadcastNotifUnsub();
-  chatUnreadIds = new Set(); chatIncomingById = new Map(); chatUnreadInitialized = false;
+  chatUnreadIds = new Set();
+  chatIncomingById = new Map();
+  chatPrivateIncomingById = new Map();
+  chatBroadcastIncomingById = new Map();
+  chatUnreadInitialized = false;
   updateChatBadge();
   chatReadWritePromise = Promise.resolve();
   chatReadBySender = {}; chatReadAt = null; chatCurrentMessages = [];
@@ -5052,17 +5074,30 @@ function initChatRealtime() {
   }).catch(() => { chatReadBySender = {}; chatReadAt = null; }).finally(() => {
     const privateQuery = db.collection('chat_messages').where('participantUids', 'array-contains', auth.currentUser.uid).limit(150);
     const broadcastQuery = db.collection('chat_messages').where('recipientUsername', '==', '__broadcast__').limit(150);
-    const processUnread = (snapshot) => {
-      snapshot.forEach(doc => registerChatIncoming(doc.data(), doc.id));
+    const processUnread = (snapshot, source) => {
+      const sourceMap = source === 'broadcast' ? chatBroadcastIncomingById : chatPrivateIncomingById;
+      // Snapshot Firestore adalah keadaan terkini query. Ganti isi cache
+      // sumber ini, jangan hanya menambahkan dokumen; dokumen yang dihapus
+      // harus ikut hilang agar badge tidak tertinggal.
+      sourceMap.clear();
+      snapshot.forEach(doc => {
+        const message = { id: doc.id, ...doc.data() };
+        if (!message.senderUsername || message.senderUsername === currentUser.username) return;
+        sourceMap.set(doc.id, message);
+      });
+      chatIncomingById = new Map([...chatPrivateIncomingById, ...chatBroadcastIncomingById]);
+      chatUnreadIds = new Set();
+      chatIncomingById.forEach((message, id) => {
+        if (isChatMessageUnread(message)) chatUnreadIds.add(id);
+      });
       chatUnreadInitialized = true;
       refreshChatUnreadState();
-      // Jika widget sudah terbuka ketika listener selesai memuat data
-      // (misalnya setelah refresh), persistensikan status baca setelah data
-      // dan chat_reads sama-sama selesai dimuat.
+      // Jika widget sudah terbuka saat listener selesai memuat data,
+      // tandai pesan yang benar-benar ada sebagai sudah dibaca.
       if (isChatWidgetOpen() && currentUser && auth?.currentUser) markChatAsRead();
     };
-    chatPrivateNotifUnsub = privateQuery.onSnapshot(processUnread, err => console.error('Chat pribadi realtime:', err));
-    chatBroadcastNotifUnsub = broadcastQuery.onSnapshot(processUnread, err => console.error('Chat broadcast realtime:', err));
+    chatPrivateNotifUnsub = privateQuery.onSnapshot(snapshot => processUnread(snapshot, 'private'), err => console.error('Chat pribadi realtime:', err));
+    chatBroadcastNotifUnsub = broadcastQuery.onSnapshot(snapshot => processUnread(snapshot, 'broadcast'), err => console.error('Chat broadcast realtime:', err));
     startConversationListener();
   });
 }
