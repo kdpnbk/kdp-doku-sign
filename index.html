@@ -49,7 +49,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
-        body { font-family: 'Inter', sans-serif; background-color: #0a0a0a; color: #e5e5e5; touch-action: manipulation; opacity: 1; }
+        body { font-family: 'Inter', sans-serif; background-color: #f4f5f7; color: #1e293b; touch-action: manipulation; opacity: 1; }
         body.loaded { opacity: 1; }
         
         body.dark-theme { background-color: #0a0a0a; color: #e5e5e5; }
@@ -140,9 +140,9 @@
       [hidden] { display: none !important; }
       body.auth-initializing #auth-screen,
       body.auth-initializing #app-dashboard { display: none !important; }
-      body { min-height: 100vh; margin: 0; background: #0a0a0a; color: #e5e5e5; font-family: Inter, Arial, sans-serif; }
+      body { min-height: 100vh; margin: 0; background: #f4f5f7; color: #1e293b; font-family: Inter, Arial, sans-serif; }
       #auth-screen:not(.hidden) { min-height: 100vh; display: flex; align-items: center; justify-content: center; box-sizing: border-box; padding: 20px; }
-      #auth-screen:not(.hidden) > div { width: 100%; max-width: 390px; box-sizing: border-box; background: #141414; border: 1px solid #303030; border-radius: 20px; padding: 26px; box-shadow: 0 20px 55px rgba(0,0,0,.45); }
+      #auth-screen:not(.hidden) > div { width: 100%; max-width: 390px; box-sizing: border-box; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 20px; padding: 26px; box-shadow: 0 20px 55px rgba(15,23,42,.10); }
       #auth-screen input:not([type="color"]), #auth-screen select { box-sizing: border-box; max-width: 100%; min-height: 40px; background: #e8efff; color: #111827; border: 1px solid #555; border-radius: 9px; padding: 8px 11px; }
       #auth-screen button[type="submit"], #register-form-container > button { min-height: 42px; border: 0; border-radius: 9px; background: #f4d982; color: #111; font-weight: 700; padding: 9px 14px; cursor: pointer; }
       #app-dashboard:not(.hidden) { display: flex; min-height: 100vh; width: 100%; }
@@ -304,7 +304,7 @@
     }
     </script>
 </head>
-<body class="dark-theme min-h-screen text-xs auth-initializing">
+<body class="light-theme min-h-screen text-xs auth-initializing">
     <div id="auth-bootstrap-screen" role="status" aria-live="polite">
         <div id="auth-bootstrap-card">
             <div id="auth-bootstrap-spinner" aria-hidden="true"></div>
@@ -1713,9 +1713,39 @@ function calculateRemainingDays(doc) {
         }
 
         function setThemeMode(theme) {
-            if (theme === 'light') { document.body.classList.remove('dark-theme'); document.body.classList.add('light-theme'); }
-            else { document.body.classList.remove('light-theme'); document.body.classList.add('dark-theme'); }
+            const selectedTheme = theme === 'dark' ? 'dark' : 'light';
+            document.body.classList.toggle('dark-theme', selectedTheme === 'dark');
+            document.body.classList.toggle('light-theme', selectedTheme === 'light');
+
+            // Simpan pilihan agar tetap berlaku setelah refresh dan login ulang.
+            try { localStorage.setItem('kdp_theme_mode', selectedTheme); } catch (err) {
+                console.warn('Preferensi tema tidak dapat disimpan:', err);
+            }
+
+            const themeColor = document.querySelector('meta[name="theme-color"]');
+            if (themeColor) themeColor.setAttribute('content', selectedTheme === 'dark' ? '#0a0a0a' : '#f4f5f7');
+
+            const darkButton = document.querySelector('#section-pengaturan button[onclick*="dark"]');
+            const lightButton = document.querySelector('#section-pengaturan button[onclick*="light"]');
+            if (darkButton && lightButton) {
+                darkButton.className = selectedTheme === 'dark'
+                    ? 'py-2 rounded-xl border border-premium-gold text-xs font-bold bg-panel text-premium-gold'
+                    : 'py-2 rounded-xl border border-panel text-xs font-semibold bg-input text-sub';
+                lightButton.className = selectedTheme === 'light'
+                    ? 'py-2 rounded-xl border border-premium-gold text-xs font-bold bg-panel text-premium-gold'
+                    : 'py-2 rounded-xl border border-panel text-xs font-semibold bg-input text-sub';
+            }
         }
+
+        // Terapkan preferensi tersimpan; jika belum pernah memilih, gunakan tema terang.
+        (function initializeThemeMode() {
+            let savedTheme = 'light';
+            try {
+                const storedTheme = localStorage.getItem('kdp_theme_mode');
+                if (storedTheme === 'dark' || storedTheme === 'light') savedTheme = storedTheme;
+            } catch (err) {}
+            setThemeMode(savedTheme);
+        })();
 
         function updateLiveDateTime() {
             const now = new Date();
