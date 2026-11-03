@@ -4877,60 +4877,80 @@ function registerChatIncoming(message, docId) {
 }
 async function markChatAsRead() {
   if (!currentUser || !auth?.currentUser || !db || !firebase?.firestore) return;
-  const target = document.getElementById('user-chat-target')?.value || '__broadcast__';
 
-  // Simpan waktu pesan terakhir yang benar-benar sudah tampil, bukan waktu
-  // perangkat pengguna. Ini menghindari pesan baru yang datang saat proses
-  // simpan ikut dianggap sudah dibaca.
+  const target = document.getElementById('user-chat-target')?.value || '__broadcast__';
   const latestBySender = new Map();
-  chatCurrentMessages.forEach(message => {
+
+  // Gabungkan pesan yang sedang ditampilkan dengan pesan yang dipakai
+  // penghitung badge. Dengan demikian badge logo dan daftar percakapan
+  // memakai sumber status baca yang sama.
+  const messagesToCheck = new Map();
+  (chatCurrentMessages || []).forEach(message => {
+    if (message?.id) messagesToCheck.set(message.id, message);
+  });
+  if (chatIncomingById instanceof Map) {
+    chatIncomingById.forEach((message, id) => messagesToCheck.set(id, message));
+  }
+
+  messagesToCheck.forEach(message => {
     if (!message || message.senderUsername === currentUser.username) return;
-    const belongsToTarget = target === '__broadcast__'
-      ? message.recipientUsername === '__broadcast__' || message.type === 'broadcast'
-      : message.senderUsername === target && message.type !== 'broadcast';
-    if (!belongsToTarget) return;
+
+    const isForSelectedConversation = target === '__broadcast__'
+      ? (message.recipientUsername === '__broadcast__' || message.type === 'broadcast')
+      : (message.senderUsername === target &&
+         message.type !== 'broadcast' &&
+         Array.isArray(message.participants) &&
+         message.participants.includes(currentUser.username));
+
+    if (!isForSelectedConversation) return;
 
     const key = chatSenderKey(message);
     const messageTime = chatTimestamp(message.createdAt);
-    // serverTimestamp yang belum selesai dikomit bernilai null; tunggu snapshot
-    // berikutnya agar tidak menandai pesan yang waktunya belum diketahui.
+    // Abaikan timestamp server yang belum selesai dikomit.
     if (!key || key === 'unknown' || !messageTime) return;
+
     const previous = latestBySender.get(key) || 0;
     if (messageTime > previous) latestBySender.set(key, messageTime);
   });
 
-  if (!latestBySender.size) return;
+  if (!latestBySender.size) {
+    refreshChatUnreadState();
+    return;
+  }
 
   const update = {
     uid: auth.currentUser.uid,
     updatedAt: firebase.firestore.FieldValue.serverTimestamp()
   };
-  let changed = false;
+  const timestampsToPersist = new Map();
+
   latestBySender.forEach((millis, key) => {
     const alreadyRead = chatTimestamp(chatReadBySender[key] || chatReadAt);
     if (millis > alreadyRead) {
-      const readTimestamp = firebase.firestore.Timestamp.fromMillis(millis);
-      update[`lastReadBySender.${key}`] = readTimestamp;
-      changed = true;
+      timestampsToPersist.set(key, millis);
+      update[`lastReadBySender.${key}`] = firebase.firestore.Timestamp.fromMillis(millis);
     }
   });
-  if (!changed) {
+
+  if (!timestampsToPersist.size) {
     refreshChatUnreadState();
     return;
   }
 
   try {
-    // Persist dulu. Badge baru diperbarui setelah Firestore mengonfirmasi,
-    // sehingga status baca tidak hilang diam-diam jika Security Rules menolak.
+    // Status baru dianggap terbaca setelah Firestore berhasil menyimpan.
     await db.collection('chat_reads').doc(auth.currentUser.uid).set(update, { merge: true });
-    latestBySender.forEach((millis, key) => {
-      const existing = chatTimestamp(chatReadBySender[key] || chatReadAt);
-      if (millis > existing) chatReadBySender[key] = firebase.firestore.Timestamp.fromMillis(millis);
+
+    timestampsToPersist.forEach((millis, key) => {
+      const savedTimestamp = firebase.firestore.Timestamp.fromMillis(millis);
+      chatReadBySender[key] = savedTimestamp;
     });
+
+    // Hitung ulang badge dari seluruh pesan yang sudah dimuat.
     refreshChatUnreadState();
   } catch (err) {
-    console.warn('Status baca chat belum dapat disimpan:', err);
-    showToast?.('Pesan sudah dibuka, tetapi status baca belum tersimpan. Periksa izin Firestore.', 3500);
+    console.error('Gagal menyimpan status baca chat ke Firestore:', err);
+    showToast?.('Status baca gagal disimpan. Periksa Firestore Rules pada chat_reads.', 4000);
   }
 }
 function renderChatConversationList() {
