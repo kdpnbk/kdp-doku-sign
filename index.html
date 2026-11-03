@@ -4878,10 +4878,24 @@ function showBrowserNotification(senderName, messageText) {
   catch (err) { console.warn('Notifikasi browser tidak dapat ditampilkan:', err); }
 }
 function chatSenderKey(message) { return String(message.senderUid || message.senderUsername || 'unknown'); }
+function isChatMessageFromCurrentUser(message) {
+  if (!message || !currentUser) return false;
+  const currentUid = auth?.currentUser?.uid || currentUser.uid || '';
+  const senderUid = String(message.senderUid || message.uid || '');
+  if (currentUid && senderUid && senderUid === String(currentUid)) return true;
+  const sender = String(message.senderUsername || '').trim().toLowerCase();
+  const me = String(currentUser.username || '').trim().toLowerCase();
+  return !!sender && !!me && sender === me;
+}
 function isChatMessageUnread(message) {
-  if (!message || message.senderUsername === currentUser?.username) return false;
+  // Query participantUids juga mengambil pesan yang dikirim oleh akun sendiri.
+  // Identitas UID menjadi pemeriksaan utama agar pesan sendiri tidak dianggap unread
+  // hanya karena format/case username berbeda.
+  if (!message || isChatMessageFromCurrentUser(message)) return false;
   const key = chatSenderKey(message);
-  return chatTimestamp(message.createdAt) > chatTimestamp(chatReadBySender[key] || chatReadAt);
+  const created = chatTimestamp(message.createdAt || message.timestamp || message.sentAt);
+  const read = chatTimestamp(chatReadBySender[key] || chatReadAt);
+  return created > 0 && created > read;
 }
 function refreshChatUnreadState() {
   chatUnreadIds.clear();
@@ -4913,7 +4927,7 @@ async function markChatAsRead() {
     // badge (chat pribadi dan broadcast) ditandai dibaca secara persisten.
     const messagesToMarkRead = [...chatIncomingById.values()];
     messagesToMarkRead.forEach(message => {
-      if (!message || message.senderUsername === currentUser.username) return;
+      if (!message || isChatMessageFromCurrentUser(message)) return;
 
       const key = chatSenderKey(message);
       const millis = chatTimestamp(message.createdAt);
@@ -5082,7 +5096,7 @@ function initChatRealtime() {
       sourceMap.clear();
       snapshot.forEach(doc => {
         const message = { id: doc.id, ...doc.data() };
-        if (!message.senderUsername || message.senderUsername === currentUser.username) return;
+        if (!message.senderUsername || isChatMessageFromCurrentUser(message)) return;
         sourceMap.set(doc.id, message);
       });
       chatIncomingById = new Map([...chatPrivateIncomingById, ...chatBroadcastIncomingById]);
@@ -5296,6 +5310,8 @@ function initChatWidget() {
     if (opening && currentUser && auth?.currentUser) {
       // Saat pusat chat dibuka, bersihkan badge untuk pesan yang sudah ada.
       // Pesan baru yang masuk setelahnya tetap akan memunculkan badge kembali.
+      chatUnreadIds.clear();
+      updateChatBadge();
       markChatAsRead();
       if (document.getElementById('panel-chat-user')?.style.display !== 'none') {
         startConversationListener();
