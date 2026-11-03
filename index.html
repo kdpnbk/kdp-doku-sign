@@ -3,11 +3,20 @@
 <head>
     <!-- PWA Settings -->
     <meta name="theme-color" content="#d4af37">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="KDP DOKU SIGN">
+    <link rel="manifest" href="/manifest.json">
+    <link rel="icon" href="/logo.png" type="image/png">
+    <link rel="apple-touch-icon" href="/logo.png">
     <script>
       if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('sw.js')
-          .then(() => console.log('PWA Service Worker Registered'))
-          .catch((err) => console.log('PWA Registration Failed: ', err));
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js')
+            .then(() => console.log('PWA Service Worker Registered'))
+            .catch((err) => console.error('PWA Registration Failed:', err));
+        });
       }
     </script>
     <meta charset="UTF-8">
