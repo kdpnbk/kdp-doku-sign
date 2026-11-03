@@ -4891,26 +4891,14 @@ async function markChatAsRead() {
   // Serialisasi penulisan agar beberapa snapshot realtime tidak saling
   // menimpa timestamp baca yang lebih baru dengan timestamp yang lebih lama.
   chatReadWritePromise = chatReadWritePromise.then(async () => {
-    const target = document.getElementById('user-chat-target')?.value || '__broadcast__';
     const latestBySender = new Map();
 
-    // Membuka tombol/widget chat dianggap telah melihat notifikasi chat.
-    // Gunakan seluruh pesan masuk yang membentuk badge, bukan hanya percakapan
-    // yang kebetulan sedang dipilih. Status baca disimpan ke Firestore agar
-    // badge tetap hilang setelah halaman di-refresh.
+    // Badge berada pada tombol pusat chat, bukan pada satu percakapan.
+    // Karena itu, saat pusat chat dibuka, semua pesan masuk yang membentuk
+    // badge (chat pribadi dan broadcast) ditandai dibaca secara persisten.
     const messagesToMarkRead = [...chatIncomingById.values()];
     messagesToMarkRead.forEach(message => {
       if (!message || message.senderUsername === currentUser.username) return;
-
-      const belongsToSelectedConversation = target === '__broadcast__'
-        ? (message.type === 'broadcast' || message.recipientUsername === '__broadcast__')
-        : (message.type !== 'broadcast' &&
-           message.senderUsername === target &&
-           (message.recipientUsername === currentUser.username ||
-            (Array.isArray(message.participants) &&
-             message.participants.includes(currentUser.username))));
-
-      if (!belongsToSelectedConversation) return;
 
       const key = chatSenderKey(message);
       const millis = chatTimestamp(message.createdAt);
@@ -5055,6 +5043,7 @@ function initChatRealtime() {
   if (chatPrivateNotifUnsub) chatPrivateNotifUnsub();
   if (chatBroadcastNotifUnsub) chatBroadcastNotifUnsub();
   chatUnreadIds = new Set(); chatIncomingById = new Map(); chatUnreadInitialized = false;
+  updateChatBadge();
   chatReadWritePromise = Promise.resolve();
   chatReadBySender = {}; chatReadAt = null; chatCurrentMessages = [];
   db.collection('chat_reads').doc(auth.currentUser.uid).get().then(doc => {
@@ -5065,7 +5054,12 @@ function initChatRealtime() {
     const broadcastQuery = db.collection('chat_messages').where('recipientUsername', '==', '__broadcast__').limit(150);
     const processUnread = (snapshot) => {
       snapshot.forEach(doc => registerChatIncoming(doc.data(), doc.id));
-      chatUnreadInitialized = true; refreshChatUnreadState();
+      chatUnreadInitialized = true;
+      refreshChatUnreadState();
+      // Jika widget sudah terbuka ketika listener selesai memuat data
+      // (misalnya setelah refresh), persistensikan status baca setelah data
+      // dan chat_reads sama-sama selesai dimuat.
+      if (isChatWidgetOpen() && currentUser && auth?.currentUser) markChatAsRead();
     };
     chatPrivateNotifUnsub = privateQuery.onSnapshot(processUnread, err => console.error('Chat pribadi realtime:', err));
     chatBroadcastNotifUnsub = broadcastQuery.onSnapshot(processUnread, err => console.error('Chat broadcast realtime:', err));
