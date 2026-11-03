@@ -2,7 +2,6 @@
 <html lang="id">
 <head>
     <!-- PWA Settings -->
-    <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#d4af37">
     <script>
       if ('serviceWorker' in navigator) {
@@ -4859,7 +4858,7 @@ function updateChatBadge() {
     const senderKey = chatSenderKey(message);
     if (senderKey && senderKey !== 'unknown') unreadSenders.add(senderKey);
   });
-  const count = unreadSenders.size;
+  const count = chatUnreadInitialized ? unreadSenders.size : 0;
   badge.textContent = count > 99 ? '99+' : String(count);
   badge.style.display = count > 0 ? 'inline-flex' : 'none';
   badge.hidden = count === 0;
@@ -4884,21 +4883,28 @@ function isChatMessageFromCurrentUser(message) {
   const me = String(currentUser.username || '').trim().toLowerCase();
   return !!sender && !!me && sender === me;
 }
-function isChatMessageForCurrentUser(message) {
+function isChatMessageForCurrentUser(message, source = '') {
   if (!message || !currentUser || isChatMessageFromCurrentUser(message)) return false;
+
   const currentUid = String(auth?.currentUser?.uid || currentUser.uid || '');
   const recipientUid = String(message.recipientUid || '');
   const recipient = String(message.recipientUsername || '').trim().toLowerCase();
-  const me = String(currentUser.username || '').trim().toLowerCase();
 
-  // Broadcast valid hanya jika benar-benar dikirim oleh user lain.
-  if (message.type === 'broadcast' || recipient === '__broadcast__') return true;
+  // Notifikasi hanya menerima bentuk pesan yang dibuat oleh sendUserMessage().
+  // Pesan private harus memiliki penerima UID yang tepat dan bukan broadcast.
+  if (source === 'private' || message.type === 'private') {
+    return message.type === 'private'
+      && !!currentUid
+      && recipientUid === currentUid
+      && recipient !== '__broadcast__';
+  }
 
-  // Chat pribadi hanya sah sebagai pesan masuk jika recipientUid secara
-  // eksplisit sama dengan UID akun yang sedang login. Jangan menebak dari
-  // participantUids karena field itu memuat pengirim DAN penerima.
-  if (currentUid && recipientUid) return recipientUid === currentUid;
-  if (recipient && me) return recipient === me;
+  // Broadcast harus cocok pada kedua field; jangan menerima dokumen lama/
+  // malformed hanya karena salah satu field menyebut "broadcast".
+  if (source === 'broadcast' || message.type === 'broadcast') {
+    return message.type === 'broadcast' && recipient === '__broadcast__';
+  }
+
   return false;
 }
 function isChatMessageUnread(message) {
@@ -4998,7 +5004,7 @@ function renderChatConversationList() {
   host.replaceChildren();
   const unreadSenders = new Set();
   [...chatIncomingById.values()].forEach(message => {
-    if (!isChatMessageUnread(message) || !message.senderUsername || message.senderUsername === currentUser?.username) return;
+    if (!isChatMessageUnread(message) || !message.senderUsername || isChatMessageFromCurrentUser(message)) return;
     unreadSenders.add(message.type === 'broadcast' || message.recipientUsername === '__broadcast__'
       ? '__broadcast__'
       : String(message.senderUid || message.senderUsername));
@@ -5113,7 +5119,7 @@ function initChatRealtime() {
       sourceMap.clear();
       snapshot.forEach(doc => {
         const message = { id: doc.id, ...doc.data() };
-        if (!message.senderUsername || !isChatMessageForCurrentUser(message)) return;
+        if (!message.senderUsername || !isChatMessageForCurrentUser(message, source)) return;
         sourceMap.set(doc.id, message);
       });
       chatIncomingById = new Map([...chatPrivateIncomingById, ...chatBroadcastIncomingById]);
