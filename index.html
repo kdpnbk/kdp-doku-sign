@@ -4837,6 +4837,12 @@ function chatTimestamp(value) {
   if (typeof value.toMillis === 'function') return value.toMillis();
   if (value instanceof Date) return value.getTime();
   if (typeof value === 'number') return value;
+  // Firestore Timestamp yang terserialisasi setelah dibaca dari cache/JSON.
+  if (typeof value === 'object') {
+    const seconds = Number(value.seconds ?? value._seconds);
+    const nanos = Number(value.nanoseconds ?? value._nanoseconds ?? 0);
+    if (Number.isFinite(seconds)) return seconds * 1000 + Math.floor(nanos / 1e6);
+  }
   return 0;
 }
 function chatSafeText(el, text) { el.textContent = String(text || ''); }
@@ -4849,7 +4855,7 @@ function updateChatBadge() {
 }
 function isChatWidgetOpen() {
   const box = document.getElementById('ai-chat-box');
-  return !!box && box.style.display !== 'none' && box.style.display !== '';
+  return !!box && window.getComputedStyle(box).display !== 'none';
 }
 function showBrowserNotification(senderName, messageText) {
   if (!('Notification' in window) || Notification.permission !== 'granted' || document.visibilityState === 'visible') return;
@@ -4888,9 +4894,12 @@ async function markChatAsRead() {
     const target = document.getElementById('user-chat-target')?.value || '__broadcast__';
     const latestBySender = new Map();
 
-    // Hanya pesan dalam percakapan yang sedang benar-benar ditampilkan
-    // yang boleh ditandai terbaca.
-    (chatCurrentMessages || []).forEach(message => {
+    // Membuka tombol/widget chat dianggap telah melihat notifikasi chat.
+    // Gunakan seluruh pesan masuk yang membentuk badge, bukan hanya percakapan
+    // yang kebetulan sedang dipilih. Status baca disimpan ke Firestore agar
+    // badge tetap hilang setelah halaman di-refresh.
+    const messagesToMarkRead = [...chatIncomingById.values()];
+    messagesToMarkRead.forEach(message => {
       if (!message || message.senderUsername === currentUser.username) return;
 
       const belongsToSelectedConversation = target === '__broadcast__'
@@ -5253,12 +5262,15 @@ function initChatWidget() {
   const box = document.getElementById('ai-chat-box');
   document.getElementById('ai-chat-toggle-btn')?.addEventListener('click', () => {
     if (!box) return;
-    box.style.display = box.style.display === 'none' || !box.style.display ? 'flex' : 'none';
-    if (isChatWidgetOpen() && document.getElementById('panel-chat-user')?.style.display !== 'none') {
-      startConversationListener();
-      // Bila listener sudah aktif dan tidak mengirim snapshot baru, tetap catat
-      // pesan yang sedang terlihat sebagai telah dibaca.
+    const opening = !isChatWidgetOpen();
+    box.style.display = opening ? 'flex' : 'none';
+    if (opening && currentUser && auth?.currentUser) {
+      // Saat pusat chat dibuka, bersihkan badge untuk pesan yang sudah ada.
+      // Pesan baru yang masuk setelahnya tetap akan memunculkan badge kembali.
       markChatAsRead();
+      if (document.getElementById('panel-chat-user')?.style.display !== 'none') {
+        startConversationListener();
+      }
     }
   });
   document.getElementById('ai-chat-close-btn')?.addEventListener('click', () => { if (box) box.style.display = 'none'; });
