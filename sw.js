@@ -1,71 +1,5521 @@
-
-importScripts('https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js');
-importScripts('https://www.gstatic.com/firebasejs/10.8.0/firebase-messaging-compat.js');
-
-firebase.initializeApp({
-  apiKey: "AIzaSyAi5YLZSr-M0yVyfuxgjsgscuTJcQYLFwE",
-  authDomain: "kdp-doku-sign.firebaseapp.com",
-  projectId: "kdp-doku-sign",
-  storageBucket: "kdp-doku-sign.firebasestorage.app",
-  messagingSenderId: "397180096578",
-  appId: "1:397180096578:web:31823d4f2ce01ed73bdddb"
-});
-
-const messaging = firebase.messaging();
-
-messaging.onBackgroundMessage((payload) => {
-  const title =
-    payload.data?.title ||
-    payload.notification?.title ||
-    "KDP DOKU SIGN";
-
-  const options = {
-    body:
-      payload.data?.body ||
-      payload.notification?.body ||
-      "Ada pemberitahuan dokumen baru.",
-    icon: "/logo.png",
-    data: {
-      url: payload.data?.url || "/"
-    }
-  };
-
-  return self.registration.showNotification(title, options);
-});
-
-self.addEventListener("notificationclick", (event) => {
-  event.notification.close();
-
-  const targetUrl = new URL(
-    event.notification.data?.url || "/",
-    self.location.origin
-  ).href;
-
-  event.waitUntil(
-    self.clients.matchAll({
-      type: "window",
-      includeUncontrolled: true
-    }).then((clientList) => {
-      for (const client of clientList) {
-        if ("focus" in client) {
-          client.navigate(targetUrl);
-          return client.focus();
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <!-- PWA Settings -->
+    <meta name="theme-color" content="#d4af37">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="KDP DOKU SIGN">
+    <link rel="manifest" href="/manifest.json">
+    <link rel="icon" href="/logo.png" type="image/png">
+    <link rel="apple-touch-icon" href="/logo.png">
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js')
+            .then(() => console.log('PWA Service Worker Registered'))
+            .catch((err) => console.error('PWA Registration Failed:', err));
+        });
+      }
+    </script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>KDP DOKU SIGN - System Approval & Digital Signature</title>
+    <!-- Auth migration: Firebase Authentication + Firestore user profiles -->
+    <!-- Favicon Otomatis Berupa Emoji 🗄️ -->
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🗄️</text></svg>">
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- PDF-lib untuk manipulasi PDF & Penempelan Gambar TTD -->
+    <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+    <!-- PDF.js untuk preview PDF -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+    <script>
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
+        
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        'regal-black': '#0a0a0a',
+                        'panel-dark': '#141414',
+                        'panel-border': '#222222',
+                        'premium-gold': '#d4af37',
+                        'premium-gold-hover': '#f9df8a',
+                        'text-main': '#e5e5e5',
+                        'text-muted': '#a3a3a3',
+                    },
+                    fontFamily: {
+                        'sans': ['Inter', 'ui-sans-serif', 'system-ui'],
+                    }
+                }
+            }
         }
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #f4f5f7; color: #1e293b; touch-action: manipulation; opacity: 1; }
+        body.loaded { opacity: 1; }
+        
+        body.dark-theme { background-color: #0a0a0a; color: #e5e5e5; }
+        .dark-theme .bg-panel { background-color: #141414; }
+        .dark-theme .bg-app { background-color: #0a0a0a; }
+        .dark-theme .border-panel { border-color: #222222; }
+        .dark-theme .text-heading { color: #e5e5e5; }
+        .dark-theme .text-sub { color: #a3a3a3; }
+        .dark-theme .bg-input { background-color: #0a0a0a; color: #e5e5e5; }
+
+        @media (max-width: 639px) { #live-datetime-container { display: none !important; } }
+
+        body.light-theme { background-color: #f4f5f7; color: #1e293b; }
+        .light-theme .bg-panel { background-color: #ffffff; }
+        .light-theme .bg-app { background-color: #f4f5f7; }
+        .light-theme .border-panel { border-color: #e2e8f0; }
+        .light-theme .text-heading { color: #0f172a; }
+        .light-theme .text-sub { color: #64748b; }
+        .light-theme .bg-input { background-color: #f8fafc; color: #0f172a; }
+
+        .sidebar-btn { transition: all 0.2s ease-in-out; }
+        .sidebar-btn:hover { background-color: rgba(212, 175, 55, 0.15); color: #d4af37; transform: translateX(2px); }
+        .sidebar-btn.active-menu-btn { background-color: #d4af37 !important; color: #0a0a0a !important; font-weight: 700 !important; }
+
+        .stat-card { transition: all 0.2s ease-in-out; }
+        .stat-card:hover { border-color: rgba(212, 175, 55, 0.5); transform: translateY(-2px); }
+
+        ::-webkit-scrollbar { width: 5px; height: 5px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #262626; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #d4af37; }
+
+        #app-toast {
+            position: fixed; right: 20px; bottom: 20px; z-index: 999999;
+            max-width: min(420px, calc(100vw - 40px));
+            padding: 11px 16px; border-radius: 10px;
+            background: #171717; color: #f5f5f5; border: 1px solid #d4af37;
+            box-shadow: 0 12px 35px rgba(0,0,0,.35); font-size: 12px;
+            opacity: 0; transform: translateY(8px); pointer-events: none;
+            transition: opacity .18s ease, transform .18s ease;
+        }
+        #app-toast.toast-visible { opacity: 1; transform: translateY(0); }
+
+        #approval-progress-overlay {
+            position: fixed; inset: 0; z-index: 1000000; display: none;
+            align-items: center; justify-content: center; padding: 20px;
+            background: rgba(0,0,0,.72); backdrop-filter: blur(3px);
+        }
+        #approval-progress-overlay.active { display: flex; }
+        #approval-progress-card {
+            width: min(420px, 100%); background: #171717; color: #f5f5f5;
+            border: 1px solid #d4af37; border-radius: 16px; padding: 24px;
+            box-shadow: 0 20px 60px rgba(0,0,0,.55); text-align: center;
+        }
+        .approval-spinner {
+            width: 42px; height: 42px; margin: 0 auto 14px;
+            border: 4px solid rgba(212,175,55,.22); border-top-color: #d4af37;
+            border-radius: 50%; animation: approval-spin .8s linear infinite;
+        }
+        @keyframes approval-spin { to { transform: rotate(360deg); } }
+        /* Cegah layar login/dashboard berkedip sebelum Firebase memulihkan sesi. */
+        body.auth-initializing #auth-screen,
+        body.auth-initializing #app-dashboard { display: none !important; }
+        #auth-bootstrap-screen {
+            position: fixed; inset: 0; z-index: 2000000; display: none;
+            align-items: center; justify-content: center; padding: 20px;
+            background: #0a0a0a; color: #e5e5e5;
+        }
+        body.auth-initializing #auth-bootstrap-screen { display: flex; }
+        #auth-bootstrap-card {
+            width: min(340px, 100%); padding: 25px; text-align: center;
+            background: #141414; border: 1px solid #333; border-radius: 16px;
+        }
+        #auth-bootstrap-spinner {
+            width: 34px; height: 34px; margin: 0 auto 14px;
+            border: 3px solid rgba(212,175,55,.22); border-top-color: #d4af37;
+            border-radius: 50%; animation: approval-spin .8s linear infinite;
+        }
+
+        #approval-progress-track { height: 7px; background: #333; border-radius: 99px; overflow: hidden; margin-top: 16px; }
+        #approval-progress-bar { height: 100%; width: 35%; background: #d4af37; border-radius: 99px; animation: approval-progress 1.6s ease-in-out infinite; }
+        @keyframes approval-progress { 0% { transform: translateX(-120%); } 100% { transform: translateX(300%); } }
+    </style>
+
+    <!-- Fallback kritis: kelas hidden wajib tetap bekerja meskipun Tailwind CDN gagal dimuat. -->
+    <style id="app-critical-fallback-css">
+      .hidden { display: none !important; }
+      [hidden] { display: none !important; }
+      body.auth-initializing #auth-screen,
+      body.auth-initializing #app-dashboard { display: none !important; }
+      body { min-height: 100vh; margin: 0; background: #f4f5f7; color: #1e293b; font-family: Inter, Arial, sans-serif; }
+      #auth-screen:not(.hidden) { min-height: 100vh; display: flex; align-items: center; justify-content: center; box-sizing: border-box; padding: 20px; }
+      #auth-screen:not(.hidden) > div { width: 100%; max-width: 390px; box-sizing: border-box; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 20px; padding: 26px; box-shadow: 0 20px 55px rgba(15,23,42,.10); }
+      #auth-screen input:not([type="color"]), #auth-screen select { box-sizing: border-box; max-width: 100%; min-height: 40px; background: #e8efff; color: #111827; border: 1px solid #555; border-radius: 9px; padding: 8px 11px; }
+      #auth-screen button[type="submit"], #register-form-container > button { min-height: 42px; border: 0; border-radius: 9px; background: #f4d982; color: #111; font-weight: 700; padding: 9px 14px; cursor: pointer; }
+      #app-dashboard:not(.hidden) { display: flex; min-height: 100vh; width: 100%; }
+      #app-sidebar { box-sizing: border-box; }
+      #app-dashboard main { min-width: 0; }
+      #app-dashboard button, #app-dashboard input, #app-dashboard select, #app-dashboard textarea { font: inherit; }
+      @media (max-width: 767px) { #auth-screen:not(.hidden) { padding: 16px; } #auth-screen:not(.hidden) > div { padding: 22px 18px; } }
+    </style>
+
+    <style>
+      .pdf-page-canvas-wrapper {
+        position: relative !important;
+        margin-bottom: 8px !important;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.8) !important;
+        background: #ffffff !important;
+        border: 1px solid #444 !important;
+        display: block !important;
+        user-select: none;
+      }
+      .pdf-page-canvas-wrapper canvas { display: block !important; width: 100% !important; height: 100% !important; }
+      .stamps-layer-container { pointer-events: none !important; }
+      .stamps-layer-container > div { pointer-events: auto !important; }
+
+      .placed-stamp-item {
+        position: absolute; cursor: grab; box-sizing: border-box;
+        display: flex; align-items: center; justify-content: center; touch-action: none;
+      }
+      .placed-stamp-item:active { cursor: grabbing; }
+      .stamp-delete-btn {
+        position: absolute; top: -10px; left: -10px; width: 22px; height: 22px;
+        background: #e11d48; color: #fff; border-radius: 50%; font-size: 11px; font-weight: bold;
+        display: flex; align-items: center; justify-content: center; cursor: pointer; z-index: 60;
+      }
+      .stamp-rotate-btn {
+        position: absolute; top: -10px; right: -10px; width: 22px; height: 22px;
+        background: #2563eb; color: #fff; border-radius: 50%; font-size: 11px; font-weight: bold;
+        display: flex; align-items: center; justify-content: center; cursor: pointer; z-index: 60;
+      }
+      .stamp-resize-handle {
+        position: absolute; right: -6px; bottom: -6px; width: 16px; height: 16px;
+        background: #d4af37; border-radius: 50%; cursor: se-resize; display: flex; z-index: 60;
       }
 
-      return self.clients.openWindow(targetUrl);
-    })
-  );
+      .inline-text-editor-box {
+        position: absolute; z-index: 100; background: rgba(20,20,20,0.95);
+        border: 1px solid #d4af37; border-radius: 8px; padding: 6px; box-shadow: 0 8px 25px rgba(0,0,0,0.7);
+      }
+      .inline-text-toolbar {
+        display: flex; align-items: center; justify-content: space-between; gap: 6px;
+        background: #18181b; border: 1px solid #3f3f46; padding: 4px 8px; border-radius: 4px; margin-bottom: 4px; font-size: 10px; color: #fff;
+      }
+      .inline-text-toolbar button { background: #27272a; border: none; color: #fff; padding: 3px 8px; border-radius: 4px; cursor: pointer; font-weight: bold; }
+      .inline-text-toolbar button:hover { background: #d4af37; color: #000; }
+
+      @media (max-width: 767px) {
+        #app-sidebar {
+          position: fixed !important; top: 0; left: 0; bottom: 0; width: 260px !important; height: 100dvh !important; z-index: 60 !important;
+          transform: translateX(-105%); transition: transform .25s ease;
+        }
+        #app-sidebar.mobile-sidebar-open { transform: translateX(0); box-shadow: 15px 0 40px rgba(0,0,0,0.8); }
+        #mobile-sidebar-overlay.mobile-overlay-visible { display: block !important; }
+        #mobile-menu-toggle { display: flex !important; }
+        
+        #preview-modal { position: fixed !important; inset: 0 !important; padding: 0 !important; background: #000000 !important; z-index: 99999 !important; display: none; }
+        #preview-modal:not(.hidden) { display: flex !important; }
+        
+        #preview-modal-content {
+          width: 100vw !important; height: 100dvh !important; max-width: 100vw !important; max-height: 100dvh !important;
+          border-radius: 0 !important; border: none !important; display: flex !important; flex-direction: column !important; background: #111 !important;
+        }
+        
+        #mobile-pdf-container-wrapper {
+          position: relative !important; flex: 0 0 76% !important; height: 76dvh !important; width: 100% !important; overflow: hidden !important; background: #18181b !important;
+        }
+
+        #pdf-scroll-view {
+          position: absolute !important; inset: 0 !important; overflow-y: auto !important; overflow-x: auto !important; padding: 4px 4px 0px 4px !important; -webkit-overflow-scrolling: touch !important;
+        }
+
+        #pdf-pages-stack-container { width: 100% !important; display: flex !important; flex-direction: column !important; align-items: center !important; }
+
+        #mobile-bottom-action-panel {
+          flex: 0 0 24% !important; height: 24dvh !important; overflow-y: auto !important; background: #141414 !important;
+          border-top: 1px solid #333 !important; padding: 6px 10px 58px 10px !important; box-sizing: border-box !important;
+        }
+
+        #mobile-pdf-action-bar {
+          position: fixed !important; left: 0 !important; right: 0 !important; bottom: 0 !important; height: 52px !important;
+          z-index: 100005 !important; display: flex !important; align-items: stretch !important; justify-content: space-around !important;
+          background: #18181b !important; border-top: 1px solid #3f3f46 !important;
+        }
+        #mobile-pdf-action-bar button {
+          flex: 1 1 0 !important; background: transparent !important; color: #f4f4f5 !important; display: flex !important;
+          flex-direction: column !important; align-items: center !important; justify-content: center !important; font-size: 9px !important; gap: 2px !important;
+        }
+
+        #mobile-insight-menu {
+          position: fixed !important; right: 10px !important; bottom: 58px !important; z-index: 100010 !important; display: none !important;
+          flex-direction: row !important; align-items: center !important; gap: 6px !important; padding: 6px !important;
+          background: #27272a !important; border: 1px solid #52525b !important; border-radius: 8px !important; box-shadow: 0 10px 25px rgba(0,0,0,0.9);
+        }
+        #mobile-insight-menu.menu-open { display: flex !important; }
+        #mobile-insight-menu button { width: 42px !important; height: 36px !important; display: flex !important; flex-direction: column !important; align-items: center !important; justify-content: center !important; font-size: 9px !important; color: #fff !important; background: #18181b !important; border-radius: 4px !important; }
+      }
+
+      @media (min-width: 768px) {
+        #mobile-pdf-action-bar { display: none !important; }
+        #mobile-insight-menu { display: none !important; }
+        #mobile-menu-toggle { display: none !important; }
+        #mobile-bottom-action-panel { display: none !important; }
+      }
+    </style>
+
+    <script>
+        // Profil pengguna dimuat dari Firestore; status login selalu diverifikasi Firebase Authentication.
+        let usersDatabase = {};
+        let currentUser = null;
+        let currentSummaryFilter = 'all';
+        let activeDocId = null;
+        let activeStandbyType = null;
+        let placedStamps = [];
+        let loadedPdfDocument = null;
+        let totalPdfPages = 1;
+        let pdfPageObserver = null;
+        let pdfPreviewSession = 0;
+        let documents = [];
+        let notifications = [];
+        let currentActiveMenu = 'ringkasan';
+        let editingTargetUsername = null;
+
+        const roleTitlesMap = { 'administrator': 'Administrator', 'pimpinan': 'Pimpinan MR', 'kabag': 'KDP Kabag', 'staff_kdp': 'Staff KDP', 'kasir': 'Kasir', 'admin_kdp': 'Admin KDP' };
+
+        try {
+            const savedUsersDb = localStorage.getItem('kdp_users_db');
+            if (savedUsersDb) usersDatabase = JSON.parse(savedUsersDb);
+            const savedDocs = localStorage.getItem('kdp_documents_db');
+            if (savedDocs) documents = JSON.parse(savedDocs);
+            
+            // Sesi hanya dianggap sah jika Firebase Authentication mengonfirmasinya.
+            currentUser = null;
+        } catch(e){}
+    </script>
+
+    <script>
+    function toggleMobileSidebar(forceOpen) {
+      const sidebar = document.getElementById('app-sidebar');
+      const overlay = document.getElementById('mobile-sidebar-overlay');
+      if (!sidebar || !overlay) return;
+      const open = typeof forceOpen === 'boolean' ? forceOpen : !sidebar.classList.contains('mobile-sidebar-open');
+      sidebar.classList.toggle('mobile-sidebar-open', open);
+      overlay.classList.toggle('mobile-overlay-visible', open);
+      document.body.style.overflow = open ? 'hidden' : '';
+    }
+    function toggleMobileInsightMenu(force){
+      const menu = document.getElementById('mobile-insight-menu');
+      if(!menu) return;
+      const open = typeof force === 'boolean' ? force : !menu.classList.contains('menu-open');
+      menu.classList.toggle('menu-open', open);
+    }
+    </script>
+</head>
+<body class="light-theme min-h-screen text-xs auth-initializing">
+    <div id="auth-bootstrap-screen" role="status" aria-live="polite">
+        <div id="auth-bootstrap-card">
+            <div id="auth-bootstrap-spinner" aria-hidden="true"></div>
+            <p class="text-sm font-bold text-premium-gold">Memulihkan sesi pengguna...</p>
+            <p class="text-[11px] text-sub mt-2">Mohon tunggu sebentar.</p>
+        </div>
+    </div>
+    <div id="app-toast" role="status" aria-live="polite"></div>
+    <div id="approval-progress-overlay" role="status" aria-live="assertive" aria-atomic="true">
+        <div id="approval-progress-card">
+            <div class="approval-spinner" aria-hidden="true"></div>
+            <h3 id="approval-progress-title" class="text-sm font-bold text-premium-gold">Memproses persetujuan...</h3>
+            <p id="approval-progress-message" class="text-xs text-gray-300 mt-2">Mohon tunggu, jangan tutup halaman ini.</p>
+            <div id="approval-progress-track"><div id="approval-progress-bar"></div></div>
+            <p class="text-[10px] text-gray-500 mt-3">Waktu proses bergantung pada ukuran PDF dan koneksi internet.</p>
+        </div>
+    </div>
+
+    <!-- HALAMAN AUTH / LOGIN -->
+    <div id="auth-screen" class="min-h-screen flex items-center justify-center p-4 bg-app relative overflow-hidden">
+        <div class="w-full max-w-sm bg-panel border border-panel rounded-2xl p-6 shadow-2xl relative z-10">
+            <div class="text-center mb-5">
+                <div class="inline-flex items-center justify-center w-12 h-12 bg-panel border border-premium-gold/30 rounded-xl text-premium-gold text-xl mb-2">🗄️</div>
+                <h1 class="text-lg font-bold text-heading">KDP <span class="text-premium-gold">DOKU SIGN</span></h1>
+                <p class="text-[11px] text-sub mt-0.5">Sistem Otorisasi Dokumen & Tanda Tangan Berjenjang</p>
+            </div>
+            <div id="login-form-container">
+                <form id="login-form" onsubmit="event.preventDefault(); handleLogin();" class="space-y-3">
+                    <div>
+                        <label class="block text-[11px] font-medium text-heading mb-1">Username atau Email</label>
+                        <input type="text" id="login-username" name="identifier" autocomplete="username" placeholder="Masukkan username atau email" required class="w-full bg-input border border-panel rounded-lg px-3 py-2 text-xs text-heading outline-none focus:border-premium-gold">
+                        <p class="text-[9px] text-sub mt-1">Gunakan salah satu: username (contoh: faisalprdd) atau email terdaftar.</p>
+                    </div>
+                    <div>
+                        <label class="block text-[11px] font-medium text-heading mb-1">Kata Sandi</label>
+                        <div class="relative">
+                            <input type="password" id="login-password" placeholder="••••••••" class="w-full bg-input border border-panel rounded-lg px-3 py-2 text-xs text-heading outline-none focus:border-premium-gold pr-8">
+                            <button type="button" onclick="togglePasswordVisibility('login-password', this)" class="absolute right-2.5 top-1/2 -translate-y-1/2 text-sub hover:text-premium-gold text-xs">👁️</button>
+                        </div>
+                    </div>
+                    <button type="submit" class="w-full bg-premium-gold text-regal-black py-2.5 rounded-lg text-xs font-bold hover:bg-premium-gold-hover transition shadow mt-1">Masuk ke Sistem</button>
+                    <div class="text-center pt-2 border-t border-panel space-y-2">
+                        <p class="text-[11px] text-sub">Belum punya akun? <button type="button" onclick="toggleAuthForm('register')" class="text-premium-gold font-semibold underline">Daftar Akun Baru</button></p>
+                        <p class="text-[10px] font-semibold text-premium-gold">Powered by: Faisal Martua Pardede</p>
+                    </div>
+                </form>
+            </div>
+            <div id="register-form-container" class="space-y-3 hidden">
+                <div class="text-center pb-2 border-b border-panel flex justify-between items-center">
+                    <h3 class="font-bold text-xs text-heading">Pendaftaran Akun Baru</h3>
+                    <button type="button" onclick="toggleAuthForm('login')" class="text-sub hover:text-heading text-xs">✕ Tutup</button>
+                </div>
+                <div><label class="block text-[11px] font-medium text-heading mb-1">Nama Lengkap</label><input type="text" id="reg-fullname" class="w-full bg-input border border-panel rounded-lg px-3 py-1.5 text-xs text-heading"></div>
+                <div><label class="block text-[11px] font-medium text-heading mb-1">Email</label><input type="email" id="reg-email" placeholder="nama@perusahaan.com" class="w-full bg-input border border-panel rounded-lg px-3 py-1.5 text-xs text-heading"></div>
+                <div><label class="block text-[11px] font-medium text-heading mb-1">Username</label><input type="text" id="reg-username" class="w-full bg-input border border-panel rounded-lg px-3 py-1.5 text-xs text-heading"></div>
+                <div><label class="block text-[11px] font-medium text-heading mb-1">Posisi / Jabatan</label>
+                    <select id="reg-position" class="w-full bg-input border border-panel rounded-lg px-3 py-1.5 text-xs text-heading">
+                        <option value="staff_kdp">Staff KDP</option><option value="kasir">Kasir</option><option value="admin_kdp">Admin KDP</option><option value="kabag">KDP Kabag</option><option value="pimpinan">Pimpinan MR</option><option value="administrator">Administrator</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-[11px] font-medium text-heading mb-1">Warna Tinta / Stempel</label>
+                    <div class="flex items-center gap-2">
+                        <input type="color" id="reg-ink-color" value="#2563eb" class="w-10 h-8 bg-input border border-panel rounded cursor-pointer">
+                        <span class="text-[10px] text-sub">Warna stempel dan teks Anda</span>
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-2">
+                    <div><label class="block text-[11px] font-medium text-heading mb-1">Sandi</label>
+                        <div class="relative">
+                            <input type="password" id="reg-password" class="w-full bg-input border border-panel rounded-lg px-3 py-1.5 text-xs text-heading pr-7">
+                            <button type="button" onclick="togglePasswordVisibility('reg-password', this)" class="absolute right-2 top-1/2 -translate-y-1/2 text-sub text-[10px]">👁️</button>
+                        </div>
+                    </div>
+                    <div><label class="block text-[11px] font-medium text-heading mb-1">Konfirmasi</label>
+                        <div class="relative">
+                            <input type="password" id="reg-confirm-password" class="w-full bg-input border border-panel rounded-lg px-3 py-1.5 text-xs text-heading pr-7">
+                            <button type="button" onclick="togglePasswordVisibility('reg-confirm-password', this)" class="absolute right-2 top-1/2 -translate-y-1/2 text-sub text-[10px]">👁️</button>
+                        </div>
+                    </div>
+                </div>
+                <div><label class="block text-[11px] font-medium text-heading mb-1">Upload PNG Paraf</label><input type="file" id="reg-paraf-file" accept="image/png" class="w-full text-xs text-sub bg-input rounded-lg border border-panel"></div>
+                <div><label class="block text-[11px] font-medium text-heading mb-1">Upload PNG TTD</label><input type="file" id="reg-ttd-file" accept="image/png" class="w-full text-xs text-sub bg-input rounded-lg border border-panel"></div>
+                <button type="button" onclick="handleRegister()" class="w-full bg-premium-gold text-regal-black py-2 rounded-lg text-xs font-bold">Daftar Akun</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- DASHBOARD UTAMA -->
+    <div id="app-dashboard" class="hidden min-h-screen flex bg-app w-full">
+        <button id="mobile-sidebar-overlay" type="button" onclick="toggleMobileSidebar(false)" class="hidden fixed inset-0 bg-black/70 z-40"></button>
+        
+        <!-- SIDEBAR KIRI -->
+        <aside id="app-sidebar" class="w-56 bg-panel border-r border-panel flex flex-col justify-between shrink-0 h-screen sticky top-0 z-50">
+            <div>
+                <div class="p-4 border-b border-panel flex items-center justify-between cursor-pointer" onclick="goToHome()">
+                    <div class="flex items-center gap-2.5">
+                        <span class="text-premium-gold text-xl">🗄️</span> 
+                        <span class="font-bold text-sm text-heading">KDP <span class="text-premium-gold">DOKU SIGN</span></span>
+                    </div>
+                    <button type="button" onclick="toggleMobileSidebar(false)" class="md:hidden text-sub hover:text-heading text-base font-bold px-1">✕</button>
+                </div>
+                <div class="px-3 pt-3 pb-2">
+                    <p class="text-[9px] font-bold text-sub uppercase px-2 mb-1.5">Menu Utama</p>
+                    <nav class="space-y-1">
+                        <button onclick="switchMenu('ringkasan')" id="menu-ringkasan" class="sidebar-btn w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-semibold text-sub"><span>📊</span> Ringkasan</button>
+                        <button onclick="switchMenu('dokumen-saya')" id="menu-dokumen-saya" class="sidebar-btn w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-semibold text-sub"><span class="flex items-center gap-2.5"><span>📁</span> Dokumen Saya</span></button>
+                        <button onclick="switchMenu('menunggu-saya')" id="menu-menunggu-saya" class="sidebar-btn w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-semibold text-sub">
+                            <span class="flex items-center gap-2.5"><span>⏳</span> Menunggu Saya</span>
+                            <span id="badge-pending-count" class="bg-premium-gold text-regal-black px-1.5 py-0.2 rounded-full text-[10px] font-bold">0</span>
+                        </button>
+                        <button onclick="switchMenu('utilities')" id="menu-utilities" class="sidebar-btn w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-semibold text-sub"><span>🛠️</span> Utilitas PDF</button>
+                        <button onclick="switchMenu('admin-panel')" id="menu-admin-panel" class="sidebar-btn hidden w-full items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-semibold text-sub border border-amber-500/30"><span>👑</span> Manajemen User</button>
+                        <button onclick="switchMenu('kontak')" id="menu-kontak" class="sidebar-btn w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-semibold text-sub"><span>👥</span> Direktori Kontak</button>
+                    </nav>
+                </div>
+                <div class="px-3 py-1">
+                    <p class="text-[9px] font-bold text-sub uppercase px-2 mb-1.5">Preferensi</p>
+                    <nav class="space-y-1">
+                        <a id="nav-btn-buat-ptkp" href="https://sites.google.com/view/kdp-bloksongo/beranda" target="_blank" rel="noopener noreferrer" class="sidebar-btn hidden w-full items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-semibold text-sub"><span>🌐</span> Buat PTKP</a>
+                        <button onclick="switchMenu('profil')" id="menu-profil" class="sidebar-btn w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-semibold text-sub"><span>👤</span> Profil Saya</button>
+                        <button onclick="switchMenu('pengaturan')" id="menu-pengaturan" class="sidebar-btn w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-semibold text-sub"><span>⚙️</span> Pengaturan</button>
+                    </nav>
+                </div>
+            </div>
+            <div class="p-3 border-t border-panel bg-input/40">
+                <div class="flex items-center gap-2.5 mb-2">
+                    <div class="w-8 h-8 rounded-full bg-panel border border-premium-gold/40 flex items-center justify-center text-premium-gold font-bold text-[11px] shrink-0 cursor-pointer overflow-hidden sidebar-avatar-box" onclick="openPhotoZoomModal()">SA</div>
+                    <div class="overflow-hidden min-w-0">
+                        <p id="current-user-name" onclick="switchMenu('profil')" class="font-semibold text-xs text-heading truncate cursor-pointer">Super Administrator</p>
+                        <p id="current-user-role" class="text-[10px] text-premium-gold truncate">Administrator</p>
+                    </div>
+                </div>
+                <button onclick="handleLogout()" class="w-full bg-panel border border-panel text-rose-300 hover:text-rose-400 py-1.5 rounded-lg text-[11px]">Keluar (Logout)</button>
+                <div class="hidden md:block text-center mt-2 pt-1 border-t border-panel/50">
+                    <p class="text-[9px] text-premium-gold font-semibold tracking-tight">Powered by: Faisal Martua Pardede</p>
+                </div>
+            </div>
+        </aside>
+
+        <!-- KONTEN UTAMA -->
+        <div class="flex-1 flex flex-col min-h-screen overflow-y-auto relative pb-8 md:pb-0">
+            <header class="bg-panel/85 backdrop-blur-md border-b border-panel px-6 py-3 sticky top-0 z-30 flex justify-between items-center">
+                <div class="flex items-center gap-3 min-w-0">
+                    <button id="mobile-menu-toggle" type="button" onclick="toggleMobileSidebar()" class="hidden shrink-0 w-9 h-9 rounded-lg border border-panel text-premium-gold bg-input items-center justify-center text-lg shadow">☰</button>
+                    <h2 id="page-title" class="text-sm font-bold text-heading">Ringkasan & Timeline Aktivitas</h2>
+                </div>
+                <div class="flex items-center gap-3 text-[11px] text-sub">
+                    <!-- Tombol Notifikasi -->
+                    <div class="relative">
+                        <button type="button" onclick="toggleNotificationDropdown()" class="relative bg-input border border-panel p-2 rounded-lg text-heading hover:border-premium-gold transition flex items-center gap-1.5">
+                            <span>🔔</span>
+                            <span id="notif-badge-count" class="absolute -top-1 -right-1 bg-rose-600 text-white w-4 h-4 rounded-full text-[9px] font-bold flex items-center justify-center hidden">0</span>
+                        </button>
+                        <!-- Dropdown Notifikasi -->
+                        <div id="notif-dropdown" class="hidden absolute right-0 mt-2 w-80 bg-panel border border-panel rounded-xl shadow-2xl z-50 overflow-hidden">
+                            <div class="p-3 border-b border-panel flex justify-between items-center bg-input/50">
+                                <h4 class="font-bold text-xs text-heading">Pemberitahuan Sistem</h4>
+                                <button type="button" onclick="markAllNotificationsAsRead()" class="text-[10px] text-premium-gold underline">Tandai Dibaca</button>
+                            </div>
+                            <div id="notif-list-container" class="max-h-64 overflow-y-auto divide-y divide-panel text-[11px]">
+                                <div class="p-3 text-center text-sub">Tidak ada notifikasi baru.</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="flex items-center gap-1.5 bg-input px-3 py-1 rounded-lg border border-panel" id="live-datetime-container">
+                        <span class="text-premium-gold">📅</span>
+                        <span id="live-datetime" class="font-mono text-heading font-semibold">Senin, 01/01/2026 00:00:00 WIB</span>
+                    </div>
+                </div>
+            </header>
+
+            <main class="p-4 md:p-6 flex-1 space-y-5">
+                <!-- RINGKASAN -->
+                <div id="section-ringkasan" class="space-y-5">
+                    <div class="bg-panel p-4 rounded-2xl border border-panel shadow-lg space-y-4">
+                        <div class="flex items-center justify-between bg-input p-3 rounded-xl border border-panel">
+                            <div class="flex items-center gap-3">
+                                <div class="w-11 h-11 rounded-full bg-panel border-2 border-premium-gold flex items-center justify-center text-premium-gold font-bold text-xs cursor-pointer overflow-hidden banner-avatar-box" onclick="openPhotoZoomModal()">SA</div>
+                                <div>
+                                    <p class="text-[10px] text-sub uppercase font-semibold">Selamat Datang,</p>
+                                    <h4 id="banner-user-name" onclick="switchMenu('profil')" class="text-xs font-bold text-heading hover:text-premium-gold cursor-pointer flex items-center gap-1">Super Administrator 🔗</h4>
+                                    <p id="banner-user-role" class="text-[10px] text-premium-gold font-medium">Administrator</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 pt-1">
+                            <div>
+                                <h3 class="text-xs font-bold text-heading">Permintaan Tanda Tangan Dokumen</h3>
+                                <p class="text-[11px] text-sub mt-0.5">Unggah dokumen baru untuk memulai proses otorisasi berjenjang.</p>
+                            </div>
+                            <button type="button" onclick="openUploadModal()" class="bg-premium-gold text-regal-black px-4 py-2 rounded-xl text-xs font-bold hover:bg-premium-gold-hover shadow flex items-center gap-1.5">+ Buat Permintaan Tanda Tangan</button>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+                        <div onclick="filterSummaryTable('all')" id="card-filter-all" class="stat-card bg-panel p-3.5 rounded-2xl border border-panel cursor-pointer shadow"><p class="text-[10px] text-sub uppercase font-semibold">Total Dokumen</p><h3 id="stat-total" class="text-xl font-bold text-heading mt-1">0</h3></div>
+                        <div onclick="filterSummaryTable('process')" id="card-filter-process" class="stat-card bg-panel p-3.5 rounded-2xl border border-panel cursor-pointer shadow"><p class="text-[10px] text-sub uppercase font-semibold">Dalam Proses</p><h3 id="stat-process" class="text-xl font-bold text-amber-400 mt-1">0</h3></div>
+                        <div onclick="filterSummaryTable('action')" id="card-filter-action" class="stat-card bg-panel p-3.5 rounded-2xl border border-panel cursor-pointer shadow"><p class="text-[10px] text-premium-gold uppercase font-semibold">Perlu Tindakan</p><h3 id="stat-action" class="text-xl font-bold text-premium-gold mt-1">0</h3></div>
+                        <div onclick="filterSummaryTable('rejected')" id="card-filter-rejected" class="stat-card bg-panel p-3.5 rounded-2xl border border-panel cursor-pointer shadow"><p class="text-[10px] text-sub uppercase font-semibold">Ditolak</p><h3 id="stat-rejected" class="text-xl font-bold text-rose-400 mt-1">0</h3></div>
+                        <div onclick="filterSummaryTable('completed')" id="card-filter-completed" class="stat-card bg-panel p-3.5 rounded-2xl border border-panel cursor-pointer shadow col-span-2 sm:col-span-1"><p class="text-[10px] text-sub uppercase font-semibold">Selesai</p><h3 id="stat-completed" class="text-xl font-bold text-emerald-400 mt-1">0</h3></div>
+                    </div>
+
+                    <div class="bg-panel p-5 rounded-2xl shadow-lg border border-panel">
+                        <h3 id="summary-table-title" class="text-xs font-bold text-heading mb-4">Menampilkan : Seluruh Dokumen</h3>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left border-collapse">
+                                <thead id="summary-table-header">
+                                    <tr class="border-b border-panel text-[10px] font-semibold text-sub uppercase">
+                                        <th class="py-2.5 px-3 min-w-[200px]">Nama Dokumen & Tanggal</th><th class="py-2.5 px-3 w-20">Jenis</th><th class="py-2.5 px-3 min-w-[130px]">Pengaju</th><th class="py-2.5 px-3 min-w-[160px]">Status</th><th class="py-2.5 px-3 text-right min-w-[160px]">Aksi</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="summary-documents-table" class="text-xs divide-y divide-panel"></tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div class="bg-panel p-5 rounded-2xl shadow-lg border border-panel">
+                        <h3 class="text-xs font-bold text-heading mb-4">Timeline Aktivitas Terbaru</h3>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left border-collapse">
+                                <thead><tr class="border-b border-panel text-[10px] font-semibold text-sub uppercase"><th class="py-2.5 px-3 w-36">Waktu</th><th class="py-2.5 px-3 w-48">Pengguna</th><th class="py-2.5 px-3">Aktivitas</th></tr></thead>
+                                <tbody id="activityLogBody" class="text-xs divide-y divide-panel">
+                                    <tr><td colspan="3" class="py-4 text-center text-sub">Memuat timeline aktivitas...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- DOKUMEN SAYA -->
+                <div id="section-dokumen-saya" class="hidden space-y-5">
+                    <div class="bg-panel p-5 rounded-2xl shadow-lg border border-panel">
+                        <h3 class="text-xs font-bold text-heading mb-4">Daftar Dokumen Saya</h3>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left border-collapse">
+                                <thead><tr class="border-b border-panel text-[10px] font-semibold text-sub uppercase"><th class="py-2.5 px-3">Nama Dokumen & Tanggal</th><th class="py-2.5 px-3">Jenis</th><th class="py-2.5 px-3">Status</th><th class="py-2.5 px-3 text-right">Aksi</th></tr></thead>
+                                <tbody id="my-documents-table" class="text-xs divide-y divide-panel"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- MENUNGGU SAYA -->
+                <div id="section-menunggu-saya" class="hidden space-y-5">
+                    <div class="bg-panel p-5 rounded-2xl shadow-lg border border-panel">
+                        <h3 class="text-xs font-bold text-heading mb-4">Dokumen Perlu Tindakan Anda</h3>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left border-collapse">
+                                <thead><tr class="border-b border-panel text-[10px] font-semibold text-sub uppercase"><th class="py-2.5 px-3">Nama Dokumen & Tanggal</th><th class="py-2.5 px-3">Jenis</th><th class="py-2.5 px-3">Tahap</th><th class="py-2.5 px-3 text-right">Otorisasi</th></tr></thead>
+                                <tbody id="pending-approval-table" class="text-xs divide-y divide-panel"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- PANEL ADMIN -->
+                <div id="section-admin-panel" class="hidden space-y-5">
+                    <div class="bg-panel p-5 rounded-2xl shadow-lg border border-panel">
+                        <div class="flex justify-between items-center mb-4 pb-3 border-b border-panel">
+                            <h3 class="text-xs font-bold text-heading">Manajemen Pengguna</h3>
+                            <button onclick="openAddUserScreen()" class="bg-premium-gold text-regal-black px-3 py-1.5 rounded-lg text-xs font-bold">+ Tambah User Baru</button>
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left border-collapse">
+                                <thead><tr class="border-b border-panel text-[10px] font-semibold text-sub uppercase"><th class="py-2.5 px-3">Nama</th><th class="py-2.5 px-3">Username</th><th class="py-2.5 px-3">Posisi</th><th class="py-2.5 px-3">Warna Tinta</th><th class="py-2.5 px-3 text-right">Aksi</th></tr></thead>
+                                <tbody id="admin-users-table" class="text-xs divide-y divide-panel"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- HALAMAN TAMBAH USER -->
+                <div id="section-tambah-user" class="hidden space-y-5">
+                    <div class="flex items-center gap-3">
+                        <button onclick="switchMenu('admin-panel')" class="text-xs text-premium-gold underline font-semibold">← Kembali ke Manajemen User</button>
+                    </div>
+                    <div class="bg-panel p-6 rounded-2xl shadow-lg border border-panel max-w-lg space-y-3 mx-auto">
+                        <h3 class="text-sm font-bold text-heading border-b border-panel pb-2">Formulir Pendaftaran User Baru</h3>
+                        <div><label class="block text-[11px] font-medium text-heading mb-1">Nama Lengkap</label><input type="text" id="new-user-fullname" class="w-full bg-input border border-panel rounded-lg px-3 py-1.5 text-xs text-heading"></div>
+                        <div><label class="block text-[11px] font-medium text-heading mb-1">Email</label><input type="email" id="new-user-email" placeholder="nama@perusahaan.com" class="w-full bg-input border border-panel rounded-lg px-3 py-1.5 text-xs text-heading"></div>
+                        <div><label class="block text-[11px] font-medium text-heading mb-1">Username</label><input type="text" id="new-user-username" class="w-full bg-input border border-panel rounded-lg px-3 py-1.5 text-xs text-heading"></div>
+                        <div><label class="block text-[11px] font-medium text-heading mb-1">Posisi / Jabatan</label>
+                            <select id="new-user-position" class="w-full bg-input border border-panel rounded-lg px-3 py-1.5 text-xs text-heading">
+                                <option value="staff_kdp">Staff KDP</option><option value="kasir">Kasir</option><option value="admin_kdp">Admin KDP</option><option value="kabag">KDP Kabag</option><option value="pimpinan">Pimpinan MR</option><option value="administrator">Administrator</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-[11px] font-medium text-heading mb-1">Warna Tinta / Stempel</label>
+                            <div class="flex items-center gap-2">
+                                <input type="color" id="new-user-ink-color" value="#2563eb" class="w-10 h-8 bg-input border border-panel rounded cursor-pointer">
+                                <span class="text-[10px] text-sub">Warna stempel dan teks user ini</span>
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-2 gap-2">
+                            <div><label class="block text-[11px] font-medium text-heading mb-1">Sandi</label><input type="password" id="new-user-password" class="w-full bg-input border border-panel rounded-lg px-3 py-1.5 text-xs text-heading"></div>
+                            <div><label class="block text-[11px] font-medium text-heading mb-1">Konfirmasi</label><input type="password" id="new-user-confirm-password" class="w-full bg-input border border-panel rounded-lg px-3 py-1.5 text-xs text-heading"></div>
+                        </div>
+                        <div><label class="block text-[11px] font-medium text-heading mb-1">Upload PNG Paraf</label><input type="file" id="new-user-paraf-file" accept="image/png" class="w-full text-xs text-sub bg-input rounded-lg border border-panel"></div>
+                        <div><label class="block text-[11px] font-medium text-heading mb-1">Upload PNG TTD</label><input type="file" id="new-user-ttd-file" accept="image/png" class="w-full text-xs text-sub bg-input rounded-lg border border-panel"></div>
+                        <button type="button" onclick="handleAdminCreateUser()" class="w-full bg-premium-gold text-regal-black py-2.5 rounded-lg text-xs font-bold mt-2">Simpan User Baru</button>
+                    </div>
+                </div>
+
+                <!-- HALAMAN EDIT USER -->
+                <div id="section-edit-user" class="hidden space-y-5">
+                    <div class="flex items-center gap-3">
+                        <button onclick="switchMenu('admin-panel')" class="text-xs text-premium-gold underline font-semibold">← Kembali ke Manajemen User</button>
+                    </div>
+                    <div class="bg-panel p-6 rounded-2xl shadow-lg border border-panel max-w-lg space-y-3 mx-auto">
+                        <h3 class="text-sm font-bold text-heading border-b border-panel pb-2">Formulir Edit User</h3>
+                        <div><label class="block text-[11px] font-medium text-heading mb-1">Nama Lengkap</label><input type="text" id="edit-user-fullname" class="w-full bg-input border border-panel rounded-lg px-3 py-1.5 text-xs text-heading"></div>
+                        <div><label class="block text-[11px] font-medium text-heading mb-1">Username (Tidak dapat diubah)</label><input type="text" id="edit-user-username" disabled class="w-full bg-input/50 border border-panel rounded-lg px-3 py-1.5 text-xs text-sub cursor-not-allowed"></div>
+                        <div><label class="block text-[11px] font-medium text-heading mb-1">Posisi / Jabatan</label>
+                            <select id="edit-user-position" class="w-full bg-input border border-panel rounded-lg px-3 py-1.5 text-xs text-heading">
+                                <option value="staff_kdp">Staff KDP</option><option value="kasir">Kasir</option><option value="admin_kdp">Admin KDP</option><option value="kabag">KDP Kabag</option><option value="pimpinan">Pimpinan MR</option><option value="administrator">Administrator</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-[11px] font-medium text-heading mb-1">Warna Tinta / Stempel</label>
+                            <div class="flex items-center gap-2">
+                                <input type="color" id="edit-user-ink-color" value="#2563eb" class="w-10 h-8 bg-input border border-panel rounded cursor-pointer">
+                                <span class="text-[10px] text-sub">Warna stempel dan teks user ini</span>
+                            </div>
+                        </div>
+                        <div class="rounded-lg border border-panel bg-input/50 p-2 text-[10px] text-sub">Password akun dikelola oleh Firebase Authentication. Gunakan fitur reset password, bukan mengubah password di profil Firestore.</div>
+                        <div><label class="block text-[11px] font-medium text-heading mb-1">Update PNG Paraf (Opsional)</label><input type="file" id="edit-user-paraf-file" accept="image/png" class="w-full text-xs text-sub bg-input rounded-lg border border-panel"></div>
+                        <div><label class="block text-[11px] font-medium text-heading mb-1">Update PNG TTD (Opsional)</label><input type="file" id="edit-user-ttd-file" accept="image/png" class="w-full text-xs text-sub bg-input rounded-lg border border-panel"></div>
+                        <button type="button" onclick="handleAdminSaveEditUser()" class="w-full bg-premium-gold text-regal-black py-2.5 rounded-lg text-xs font-bold mt-2">Simpan Perubahan User</button>
+                    </div>
+                </div>
+
+                <!-- UTILITAS PDF -->
+                <div id="section-utilities" class="hidden space-y-5">
+                    <h3 class="text-sm font-bold text-heading">Utilitas PDF</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-2xl mx-auto">
+                        <button onclick="switchMenu('utility-merge')" class="bg-panel p-6 rounded-2xl border border-panel text-left hover:border-premium-gold transition shadow">
+                            <div class="text-3xl mb-3">📚</div>
+                            <div class="text-sm font-bold text-heading">Gabung PDF</div>
+                            <p class="text-xs text-sub mt-1">Gabungkan beberapa file PDF. Hasil akan diunggah ke cloud saat diteruskan ke approval.</p>
+                        </button>
+                        <button onclick="switchMenu('utility-organize-pages')" class="bg-panel p-6 rounded-2xl border border-panel text-left hover:border-premium-gold transition shadow">
+                            <div class="text-3xl mb-3">📑</div>
+                            <div class="text-sm font-bold text-heading">Atur Halaman PDF</div>
+                            <p class="text-xs text-sub mt-1">Susun ulang urutan halaman & hapus halaman satuan menggunakan thumbnail interaktif.</p>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 1. SUB-MENU: GABUNG PDF -->
+                <div id="section-utility-merge" class="hidden space-y-5">
+                    <div class="flex items-center gap-3">
+                        <button onclick="switchMenu('utilities')" class="text-xs text-premium-gold underline font-semibold">← Kembali ke Utilitas PDF</button>
+                    </div>
+
+                    <div id="utility-merge-initial-view" class="bg-panel p-10 rounded-2xl border border-panel shadow-xl text-center space-y-4 max-w-2xl mx-auto">
+                        <h2 class="text-xl font-bold text-heading">Gabungkan file PDF</h2>
+                        <p class="text-xs text-sub max-w-md mx-auto">Gabungkan PDF dengan urutan yang Anda inginkan dengan penggabungan PDF termudah.</p>
+                        
+                        <div id="utility-merge-drop-zone" class="border-2 border-dashed border-premium-gold/50 rounded-2xl p-10 cursor-pointer bg-panel hover:bg-premium-gold/10 hover:border-premium-gold transition flex flex-col items-center justify-center relative shadow-inner" onclick="document.getElementById('utility-merge-files').click()" ondragover="event.preventDefault(); this.classList.add('border-premium-gold', 'bg-premium-gold/15', 'scale-[1.01]');" ondragleave="this.classList.remove('border-premium-gold', 'bg-premium-gold/15', 'scale-[1.01]');" ondrop="this.classList.remove('border-premium-gold', 'bg-premium-gold/15', 'scale-[1.01]'); handleUtilityMergeDrop(event)">
+                            <div class="w-16 h-16 bg-premium-gold text-regal-black rounded-xl flex items-center justify-center text-2xl font-bold shadow-lg mb-3">📄</div>
+                            <div class="bg-premium-gold hover:bg-premium-gold-hover text-regal-black px-6 py-3 rounded-xl text-xs font-bold shadow-lg transition">Pilih file PDF</div>
+                            <p class="text-[11px] text-sub mt-3">atau jatuhkan PDF di sini (Tahan berkas untuk efek hover aktif)</p>
+                        </div>
+                        <input type="file" id="utility-merge-files" accept="application/pdf" multiple class="hidden" onchange="handleUtilityMergeFileSelect(this)">
+                    </div>
+
+                    <div id="utility-merge-workspace" class="hidden grid grid-cols-1 lg:grid-cols-4 gap-6 items-start">
+                        <div class="lg:col-span-3 bg-panel p-6 rounded-2xl border border-panel shadow-lg min-h-[400px] flex flex-col justify-between">
+                            <div>
+                                <div class="flex justify-between items-center mb-4 pb-3 border-b border-panel">
+                                    <h3 class="text-xs font-bold text-heading">Susun Urutan File (Tarik / Seret Kartu untuk Mengatur Urutan)</h3>
+                                    <button type="button" onclick="document.getElementById('utility-merge-files-more').click()" class="bg-premium-gold hover:bg-premium-gold-hover text-regal-black w-8 h-8 rounded-full font-bold flex items-center justify-center shadow" title="Tambah File Lagi">＋</button>
+                                    <input type="file" id="utility-merge-files-more" accept="application/pdf" multiple class="hidden" onchange="handleUtilityMergeAddMore(this)">
+                                </div>
+                                <div id="utility-merge-cards-container" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4"></div>
+                            </div>
+                        </div>
+
+                        <div class="bg-panel p-6 rounded-2xl border border-panel shadow-lg space-y-4 sticky top-20">
+                            <h3 class="text-sm font-bold text-heading border-b border-panel pb-2">Gabungkan PDF</h3>
+                            <div class="bg-input p-3 rounded-xl border border-panel text-[11px] text-sub leading-relaxed">
+                                ℹ️ Anda dapat menyeret (drag & drop) kartu file PDF secara langsung untuk menyusun urutan, atau menggunakan tombol geser.
+                            </div>
+                            <button type="button" onclick="processMergePDFs()" class="w-full bg-premium-gold hover:bg-premium-gold-hover text-regal-black py-3 rounded-xl text-xs font-bold shadow-lg transition flex items-center justify-center gap-2">
+                                <span>Gabungkan PDF</span> ➔
+                            </button>
+                        </div>
+                    </div>
+
+                    <div id="utility-merge-success-view" class="hidden bg-panel p-10 rounded-2xl border border-panel shadow-xl text-center space-y-5 max-w-xl mx-auto">
+                        <div class="inline-flex items-center justify-center w-16 h-16 bg-emerald-500/20 border border-emerald-500 text-emerald-400 rounded-full text-2xl font-bold">✓</div>
+                        <h2 class="text-xl font-bold text-heading">PDF sudah digabungkan!</h2>
+                        
+                        <div class="space-y-3 pt-2">
+                            <button type="button" onclick="downloadLastMergedPDF()" class="w-full bg-panel border border-premium-gold text-premium-gold hover:bg-premium-gold hover:text-regal-black py-3 rounded-xl text-xs font-bold shadow transition">
+                                ⬇️ Unduh PDF yang digabungkan
+                            </button>
+                            <button type="button" onclick="openProceedMergedModal('merge')" class="w-full bg-premium-gold hover:bg-premium-gold-hover text-regal-black py-3.5 rounded-xl text-xs font-bold shadow-lg transition flex items-center justify-center gap-2">
+                                <span>✍️ Lanjut ke pemberian tanda tangan</span> ➔
+                            </button>
+                        </div>
+
+                        <div class="pt-4 border-t border-panel flex justify-center">
+                            <button type="button" onclick="resetMergeUtility()" class="text-xs text-premium-gold underline font-semibold">Gabungkan file PDF lainnya</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 2. SUB-MENU: ATUR HALAMAN PDF -->
+                <div id="section-utility-organize-pages" class="hidden space-y-5">
+                    <div class="flex items-center gap-3">
+                        <button onclick="switchMenu('utilities')" class="text-xs text-premium-gold underline font-semibold">← Kembali ke Utilitas PDF</button>
+                    </div>
+
+                    <div id="utility-org-initial-view" class="bg-panel p-10 rounded-2xl border border-panel shadow-xl text-center space-y-4 max-w-2xl mx-auto">
+                        <h2 class="text-xl font-bold text-heading">Atur Halaman PDF</h2>
+                        <p class="text-xs text-sub max-w-md mx-auto">Pilih 1 file PDF untuk mengatur urutan halaman atau menghapus halaman tertentu melalui thumbnail interaktif.</p>
+                        
+                        <div id="utility-org-drop-zone" class="border-2 border-dashed border-premium-gold/50 rounded-2xl p-10 cursor-pointer bg-panel hover:bg-premium-gold/10 hover:border-premium-gold transition flex flex-col items-center justify-center relative shadow-inner" onclick="document.getElementById('utility-org-file').click()" ondragover="event.preventDefault(); this.classList.add('border-premium-gold', 'bg-premium-gold/15', 'scale-[1.01]');" ondragleave="this.classList.remove('border-premium-gold', 'bg-premium-gold/15', 'scale-[1.01]');" ondrop="this.classList.remove('border-premium-gold', 'bg-premium-gold/15', 'scale-[1.01]'); handleUtilityOrgDrop(event)">
+                            <div class="w-16 h-16 bg-premium-gold text-regal-black rounded-xl flex items-center justify-center text-2xl font-bold shadow-lg mb-3">📑</div>
+                            <div class="bg-premium-gold hover:bg-premium-gold-hover text-regal-black px-6 py-3 rounded-xl text-xs font-bold shadow-lg transition">Pilih 1 File PDF</div>
+                            <p class="text-[11px] text-sub mt-3">atau jatuhkan PDF di sini (Tahan berkas untuk efek hover aktif)</p>
+                        </div>
+                        <input type="file" id="utility-org-file" accept="application/pdf" class="hidden" onchange="handleUtilityOrgFileSelect(this)">
+                    </div>
+
+                    <div id="utility-org-workspace" class="hidden grid grid-cols-1 lg:grid-cols-4 gap-6 items-start">
+                        <div class="lg:col-span-3 bg-panel p-6 rounded-2xl border border-panel shadow-lg min-h-[400px]">
+                            <div class="flex justify-between items-center mb-4 pb-3 border-b border-panel">
+                                <h3 class="text-xs font-bold text-heading">Thumbnail Halaman PDF (Tarik kartu untuk susun urutan, klik ✕ untuk hapus)</h3>
+                                <button type="button" onclick="resetOrganizeUtility()" class="bg-panel border border-panel text-rose-400 hover:text-rose-300 px-3 py-1 rounded text-[11px] font-bold">Ganti File Lain</button>
+                            </div>
+                            <div id="utility-org-thumbnails-container" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4"></div>
+                        </div>
+
+                        <div class="bg-panel p-6 rounded-2xl border border-panel shadow-lg space-y-4 sticky top-20">
+                            <h3 class="text-sm font-bold text-heading border-b border-panel pb-2">Aksi Pengaturan PDF</h3>
+                            <div class="bg-input p-3 rounded-xl border border-panel text-[11px] text-sub leading-relaxed">
+                                ℹ️ Urutkan thumbnail dengan cara *drag and drop*. Hapus halaman yang tidak diinginkan dengan menekan ikon silang merah (✕) di sudut kanan atas thumbnail.
+                            </div>
+                            <button type="button" onclick="processOrganizeAndSavePDF()" class="w-full bg-premium-gold hover:bg-premium-gold-hover text-regal-black py-3 rounded-xl text-xs font-bold shadow-lg transition flex items-center justify-center gap-2">
+                                <span>Simpan & Download PDF</span> ➔
+                            </button>
+                            <button type="button" onclick="openProceedMergedModal('organize')" class="w-full bg-panel border border-premium-gold text-premium-gold hover:bg-premium-gold hover:text-regal-black py-3 rounded-xl text-xs font-bold shadow transition flex items-center justify-center gap-2">
+                                <span>✍️ Lanjut ke Approval</span> ➔
+                            </button>
+                        </div>
+                    </div>
+
+                    <div id="utility-org-success-view" class="hidden bg-panel p-10 rounded-2xl border border-panel shadow-xl text-center space-y-5 max-w-xl mx-auto">
+                        <div class="inline-flex items-center justify-center w-16 h-16 bg-emerald-500/20 border border-emerald-500 text-emerald-400 rounded-full text-2xl font-bold">✓</div>
+                        <h2 class="text-xl font-bold text-heading">Halaman PDF berhasil diatur ulang!</h2>
+                        
+                        <div class="space-y-3 pt-2">
+                            <button type="button" onclick="downloadLastOrganizedPDF()" class="w-full bg-panel border border-premium-gold text-premium-gold hover:bg-premium-gold hover:text-regal-black py-3 rounded-xl text-xs font-bold shadow transition">
+                                ⬇️ Unduh PDF Baru
+                            </button>
+                            <button type="button" onclick="openProceedMergedModal('organize')" class="w-full bg-premium-gold hover:bg-premium-gold-hover text-regal-black py-3.5 rounded-xl text-xs font-bold shadow-lg transition flex items-center justify-center gap-2">
+                                <span>✍️ Lanjut ke pemberian tanda tangan</span> ➔
+                            </button>
+                        </div>
+
+                        <div class="pt-4 border-t border-panel flex justify-center">
+                            <button type="button" onclick="resetOrganizeUtility()" class="text-xs text-premium-gold underline font-semibold">Atur file PDF lainnya</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- KONTAK -->
+                <div id="section-kontak" class="hidden space-y-5">
+                    <div class="bg-panel p-5 rounded-2xl shadow-lg border border-panel">
+                        <h3 class="text-xs font-bold text-heading mb-4">Direktori Kontak</h3>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left border-collapse">
+                                <thead><tr class="border-b border-panel text-[10px] font-semibold text-sub uppercase"><th class="py-2.5 px-3">Nama</th><th class="py-2.5 px-3">Username</th><th class="py-2.5 px-3">Posisi</th></tr></thead>
+                                <tbody id="contacts-directory-table" class="text-xs divide-y divide-panel"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- PROFIL SAYA -->
+                <div id="section-profil" class="hidden space-y-5">
+                    <div class="bg-panel p-6 rounded-2xl shadow-lg border border-panel max-w-xl mx-auto space-y-5">
+                        <div class="border-b border-panel pb-3 flex justify-between items-center">
+                            <div>
+                                <h3 class="text-sm font-bold text-heading">Profil Saya & Manajemen Aset</h3>
+                                <p class="text-[11px] text-sub mt-0.5">Lihat profil aktif Anda saat ini. Klik tombol "Ganti" untuk melakukan pembaruan.</p>
+                            </div>
+                            <span id="profile-role-badge" class="px-2.5 py-1 rounded-full text-[10px] font-bold bg-premium-gold/20 text-premium-gold border border-premium-gold/30 uppercase">-</span>
+                        </div>
+
+                        <div class="space-y-4">
+                            <!-- 1. NAMA & JABATAN -->
+                            <div class="bg-input/40 p-3.5 rounded-xl border border-panel space-y-3">
+                                <div class="flex items-center justify-between">
+                                    <div>
+                                        <p class="text-[10px] font-bold text-sub uppercase">Nama & Jabatan Saat Ini</p>
+                                        <p id="profile-active-name-role" class="text-xs font-bold text-heading mt-0.5">-</p>
+                                    </div>
+                                    <button type="button" onclick="toggleEditMode('name-role')" id="btn-toggle-name-role" class="bg-panel hover:bg-premium-gold hover:text-regal-black border border-panel px-3 py-1.5 rounded-lg text-xs font-bold transition">Ganti</button>
+                                </div>
+                                <div id="container-edit-name-role" class="hidden space-y-2 pt-2 border-t border-panel/50">
+                                    <div>
+                                        <label class="block text-[10px] font-medium text-heading mb-1">Nama Lengkap Baru</label>
+                                        <input type="text" id="profile-edit-fullname" class="w-full bg-input border border-panel rounded-lg px-3 py-1.5 text-xs text-heading outline-none focus:border-premium-gold">
+                                    </div>
+                                    <div>
+                                        <label class="block text-[10px] font-medium text-heading mb-1">Posisi / Jabatan Baru</label>
+                                        <select id="profile-edit-position" class="w-full bg-input border border-panel rounded-lg px-3 py-1.5 text-xs text-heading outline-none focus:border-premium-gold">
+                                            <option value="staff_kdp">Staff KDP</option>
+                                            <option value="kasir">Kasir</option>
+                                            <option value="admin_kdp">Admin KDP</option>
+                                            <option value="kabag">KDP Kabag</option>
+                                            <option value="pimpinan">Pimpinan MR</option>
+                                            <option value="administrator">Administrator</option>
+                                        </select>
+                                    </div>
+                                    <div class="flex justify-end gap-2 pt-1">
+                                        <button type="button" onclick="toggleEditMode('name-role')" class="px-3 py-1 bg-panel border border-panel text-heading rounded text-xs">Batal</button>
+                                        <button type="button" onclick="saveBasicProfileChanges()" class="px-4 py-1 bg-premium-gold text-regal-black rounded font-bold text-xs">Simpan</button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- 2. FOTO PROFIL -->
+                            <div class="bg-input/40 p-3.5 rounded-xl border border-panel space-y-3">
+                                <div class="flex items-center justify-between">
+                                    <div class="flex items-center gap-3">
+                                        <div class="w-12 h-12 rounded-full bg-panel border-2 border-premium-gold flex items-center justify-center font-bold text-sm text-premium-gold overflow-hidden shrink-0 shadow profile-preview-avatar-box">SA</div>
+                                        <div>
+                                            <p class="text-[10px] font-bold text-sub uppercase">Foto Profil Aktif</p>
+                                            <p class="text-[11px] font-semibold text-heading">Menampilkan foto atau inisial akun</p>
+                                        </div>
+                                    </div>
+                                    <button type="button" onclick="toggleEditMode('avatar')" id="btn-toggle-avatar" class="bg-panel hover:bg-premium-gold hover:text-regal-black border border-panel px-3 py-1.5 rounded-lg text-xs font-bold transition">Ganti</button>
+                                </div>
+                                <div id="container-edit-avatar" class="hidden space-y-2 pt-2 border-t border-panel/50">
+                                    <label class="block text-[10px] font-medium text-heading mb-1">Pilih File Foto Profil Baru (PNG/JPG)</label>
+                                    <input type="file" id="profile-avatar-file" accept="image/png, image/jpeg" class="w-full text-xs text-sub bg-input rounded-lg border border-panel p-1">
+                                    <div class="flex justify-end gap-2 pt-1">
+                                        <button type="button" onclick="toggleEditMode('avatar')" class="px-3 py-1 bg-panel border border-panel text-heading rounded text-xs">Batal</button>
+                                        <button type="button" onclick="uploadSpecificAsset('avatar')" class="px-4 py-1 bg-premium-gold text-regal-black rounded font-bold text-xs">Simpan</button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- 3. WARNA TINTA -->
+                            <div class="bg-input/40 p-3.5 rounded-xl border border-panel space-y-3">
+                                <div class="flex items-center justify-between">
+                                    <div class="flex items-center gap-3">
+                                        <div id="profile-ink-preview-circle" class="w-10 h-10 rounded-lg border-2 border-panel flex items-center justify-center shrink-0 shadow" style="background-color: #2563eb;"></div>
+                                        <div>
+                                            <p class="text-[10px] font-bold text-sub uppercase">Warna Tinta / Stempel Aktif</p>
+                                            <p id="profile-ink-code-label" class="text-[11px] font-mono text-premium-gold font-bold">#2563eb</p>
+                                        </div>
+                                    </div>
+                                    <button type="button" onclick="toggleEditMode('ink')" id="btn-toggle-ink" class="bg-panel hover:bg-premium-gold hover:text-regal-black border border-panel px-3 py-1.5 rounded-lg text-xs font-bold transition">Ganti</button>
+                                </div>
+                                <div id="container-edit-ink" class="hidden space-y-2 pt-2 border-t border-panel/50">
+                                    <label class="block text-[10px] font-medium text-heading mb-1">Pilih Warna Tinta Baru</label>
+                                    <div class="flex items-center gap-2">
+                                        <input type="color" id="profile-edit-ink-color" value="#2563eb" class="w-10 h-9 bg-input border border-panel rounded-lg cursor-pointer p-0.5">
+                                        <span class="text-[10px] text-sub">Warna untuk stempel dan teks Anda</span>
+                                    </div>
+                                    <div class="flex justify-end gap-2 pt-1">
+                                        <button type="button" onclick="toggleEditMode('ink')" class="px-3 py-1 bg-panel border border-panel text-heading rounded text-xs">Batal</button>
+                                        <button type="button" onclick="uploadSpecificAsset('ink')" class="px-4 py-1 bg-premium-gold text-regal-black rounded font-bold text-xs">Simpan</button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- 4. ASET PARAF -->
+                            <div class="bg-input/40 p-3.5 rounded-xl border border-panel space-y-3">
+                                <div class="flex items-center justify-between">
+                                    <div class="flex items-center gap-3">
+                                        <div class="w-16 h-10 bg-panel border border-panel rounded flex items-center justify-center overflow-hidden shrink-0 p-0.5" id="profile-paraf-preview-box">
+                                            <span class="text-[9px] text-sub italic">Kosong</span>
+                                        </div>
+                                        <div>
+                                            <p class="text-[10px] font-bold text-sub uppercase">Aset Gambar Paraf Aktif</p>
+                                            <p class="text-[11px] font-semibold text-heading">Digunakan saat membubuhkan paraf dokumen</p>
+                                        </div>
+                                    </div>
+                                    <button type="button" onclick="toggleEditMode('paraf')" id="btn-toggle-paraf" class="bg-panel hover:bg-premium-gold hover:text-regal-black border border-panel px-3 py-1.5 rounded-lg text-xs font-bold transition">Ganti</button>
+                                </div>
+                                <div id="container-edit-paraf" class="hidden space-y-2 pt-2 border-t border-panel/50">
+                                    <label class="block text-[10px] font-medium text-heading mb-1">Upload PNG Paraf Baru (Transparan)</label>
+                                    <input type="file" id="profile-paraf-file" accept="image/png" class="w-full text-xs text-sub bg-input rounded-lg border border-panel p-1">
+                                    <div class="flex justify-end gap-2 pt-1">
+                                        <button type="button" onclick="toggleEditMode('paraf')" class="px-3 py-1 bg-panel border border-panel text-heading rounded text-xs">Batal</button>
+                                        <button type="button" onclick="uploadSpecificAsset('paraf')" class="px-4 py-1 bg-premium-gold text-regal-black rounded font-bold text-xs">Simpan</button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- 5. ASET TTD -->
+                            <div class="bg-input/40 p-3.5 rounded-xl border border-panel space-y-3">
+                                <div class="flex items-center justify-between">
+                                    <div class="flex items-center gap-3">
+                                        <div class="w-20 h-10 bg-panel border border-panel rounded flex items-center justify-center overflow-hidden shrink-0 p-0.5" id="profile-ttd-preview-box">
+                                            <span class="text-[9px] text-sub italic">Kosong</span>
+                                        </div>
+                                        <div>
+                                            <p class="text-[10px] font-bold text-sub uppercase">Aset Gambar TTD Aktif</p>
+                                            <p class="text-[11px] font-semibold text-heading">Digunakan saat otorisasi persetujuan akhir</p>
+                                        </div>
+                                    </div>
+                                    <button type="button" onclick="toggleEditMode('ttd')" id="btn-toggle-ttd" class="bg-panel hover:bg-premium-gold hover:text-regal-black border border-panel px-3 py-1.5 rounded-lg text-xs font-bold transition">Ganti</button>
+                                </div>
+                                <div id="container-edit-ttd" class="hidden space-y-2 pt-2 border-t border-panel/50">
+                                    <label class="block text-[10px] font-medium text-heading mb-1">Upload PNG TTD Baru (Transparan)</label>
+                                    <input type="file" id="profile-ttd-file" accept="image/png" class="w-full text-xs text-sub bg-input rounded-lg border border-panel p-1">
+                                    <div class="flex justify-end gap-2 pt-1">
+                                        <button type="button" onclick="toggleEditMode('ttd')" class="px-3 py-1 bg-panel border border-panel text-heading rounded text-xs">Batal</button>
+                                        <button type="button" onclick="uploadSpecificAsset('ttd')" class="px-4 py-1 bg-premium-gold text-regal-black rounded font-bold text-xs">Simpan</button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- 6. KEAMANAN SANDI -->
+                            <div class="bg-input/40 p-3.5 rounded-xl border border-panel space-y-3">
+                                <div class="flex items-center justify-between">
+                                    <div>
+                                        <p class="text-[10px] font-bold text-sub uppercase">Keamanan Sandi Akun</p>
+                                        <p class="text-[11px] font-semibold text-heading">Perbarui kata sandi secara berkala</p>
+                                    </div>
+                                    <button type="button" onclick="toggleEditMode('password')" id="btn-toggle-password" class="bg-panel hover:bg-premium-gold hover:text-regal-black border border-panel px-3 py-1.5 rounded-lg text-xs font-bold transition">Ganti</button>
+                                </div>
+                                <div id="container-edit-password" class="hidden space-y-2 pt-2 border-t border-panel/50">
+                                    <label class="block text-[10px] font-medium text-heading mb-1">Masukkan Sandi Baru</label>
+                                    <div class="relative">
+                                        <input type="password" id="profile-edit-password" placeholder="Sandi baru..." class="w-full bg-input border border-panel rounded-lg px-3 py-1.5 text-xs text-heading outline-none focus:border-premium-gold pr-8">
+                                        <button type="button" onclick="togglePasswordVisibility('profile-edit-password', this)" class="absolute right-2.5 top-1/2 -translate-y-1/2 text-sub text-xs">👁️</button>
+                                    </div>
+                                    <div class="flex justify-end gap-2 pt-1">
+                                        <button type="button" onclick="toggleEditMode('password')" class="px-3 py-1 bg-panel border border-panel text-heading rounded text-xs">Batal</button>
+                                        <button type="button" onclick="saveNewPassword()" class="px-4 py-1 bg-premium-gold text-regal-black rounded font-bold text-xs">Simpan Password</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- PENGATURAN -->
+                <div id="section-pengaturan" class="hidden space-y-4">
+                    <div class="bg-panel p-5 rounded-2xl shadow-lg border border-panel max-w-md">
+                        <h3 class="text-xs font-bold text-heading mb-2">Notifikasi Perangkat</h3>
+                        <p class="text-[11px] text-sub mb-3">Aktifkan notifikasi pada perangkat ini agar pemberitahuan dokumen dapat diterima melalui browser.</p>
+                        <div class="flex items-center gap-3 flex-wrap">
+                            <button type="button" id="btn-enable-push" onclick="enablePushNotifications()" class="px-4 py-2 rounded-xl bg-premium-gold text-regal-black text-xs font-bold">Aktifkan Notifikasi</button>
+                            <span id="push-notification-status" class="text-[11px] text-sub" role="status" aria-live="polite">Belum diaktifkan pada perangkat ini.</span>
+                        </div>
+                    </div>
+                    <div class="bg-panel p-5 rounded-2xl shadow-lg border border-panel max-w-md">
+                        <h3 class="text-xs font-bold text-heading mb-3">Tema</h3>
+                        <div class="grid grid-cols-2 gap-3">
+                            <button onclick="setThemeMode('dark')" class="py-2 rounded-xl border border-premium-gold text-xs font-bold bg-panel text-premium-gold">Mode Gelap</button>
+                            <button onclick="setThemeMode('light')" class="py-2 rounded-xl border border-panel text-xs font-semibold bg-input text-sub">Mode Terang</button>
+                        </div>
+                    </div>
+                </div>
+            </main>
+
+            <!-- CREDIT MOBILE -->
+            <div class="block md:hidden fixed left-2 bottom-2 z-40 bg-panel/90 backdrop-blur-md px-2.5 py-1 rounded-md border border-premium-gold/40 shadow-lg pointer-events-none">
+                <p class="text-[8px] text-premium-gold font-bold tracking-tight">Powered by: Faisal Martua Pardede</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL FOTO ZOOM -->
+    <div id="photo-zoom-modal" class="fixed inset-0 bg-black/90 hidden flex items-center justify-center p-4 z-50" onclick="closePhotoZoomModal()">
+        <div class="bg-panel p-3 rounded-2xl border text-center shadow-2xl" onclick="event.stopPropagation()">
+            <div id="zoomed-photo-container" class="w-48 h-48 mx-auto rounded-xl bg-input flex items-center justify-center font-bold text-2xl text-premium-gold overflow-hidden">SA</div>
+        </div>
+    </div>
+
+    <!-- MODAL UPLOAD -->
+    <div id="upload-modal" class="fixed inset-0 bg-black/85 hidden flex items-center justify-center p-4 z-50">
+        <div class="bg-panel w-full max-w-lg rounded-2xl shadow-2xl p-6 border border-panel space-y-4">
+            <div class="flex justify-between items-center pb-3 border-b border-panel">
+                <h3 class="font-bold text-xs text-heading">Buat Permintaan Tanda Tangan</h3>
+                <button type="button" onclick="closeUploadModal()" class="text-sub font-mono">&times;</button>
+            </div>
+            <div>
+                <label class="block text-xs font-medium text-heading mb-1">Judul Dokumen (Opsional)</label>
+                <input type="text" id="modal-doc-title" placeholder="Kosongkan jika ingin sesuai nama file asli" class="w-full bg-input border border-panel rounded-lg px-3 py-2 text-xs text-heading outline-none focus:border-premium-gold">
+            </div>
+            <div>
+                <label class="block text-xs font-medium text-heading mb-1">Jenis Dokumen & Otorisasi</label>
+                <select id="doc-type-select" class="w-full bg-input border border-panel rounded-lg px-3 py-2 text-xs text-heading">
+                    <option value="kdp">📁 File KDP (2 Wajib Staff KDP → Kabag → Pimpinan)</option>
+                    <option value="kasir">💵 File Kasir (Kasir Wajib → Kabag → Pimpinan)</option>
+                    <option value="admkdp">📑 File ADMKDP (ADM KDP Wajib → Kabag → Pimpinan)</option>
+                    <option value="pihak_ketiga">🤝 File Pihak Ketiga (2 Wajib Staff KDP → Kabag → Pimpinan)</option>
+                    <option value="lain_lain">🌐 File Lain-lain (Staff KDP Opsional, Kabag Bisa Langsung → Pimpinan)</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-xs font-medium text-heading mb-1">Unggah File PDF</label>
+                <div id="modal-pdf-drop-zone" class="border-2 border-dashed border-premium-gold/60 rounded-xl p-6 text-center cursor-pointer bg-input/40 transition hover:border-premium-gold" ondragover="event.preventDefault(); this.classList.add('drag-active')" ondragleave="this.classList.remove('drag-active')" ondrop="handleModalDrop(event)" onclick="document.getElementById('modal-doc-file').click()">
+                    📄 Seret & lepas file PDF di sini atau klik untuk memilih
+                    <div id="pdf-selected-filename" class="text-xs text-premium-gold font-semibold mt-2"></div>
+                </div>
+                <input type="file" id="modal-doc-file" accept="application/pdf" class="hidden" onchange="handleFileSelectedPreview(this)">
+            </div>
+            <div class="flex justify-end gap-2 pt-3 border-t border-panel">
+                <button type="button" onclick="closeUploadModal()" class="px-4 py-2 bg-panel text-heading rounded-lg text-xs">Batal</button>
+                <button type="button" onclick="submitModalDocument()" class="px-5 py-2 bg-premium-gold text-regal-black rounded-lg text-xs font-bold">Kirim Pengajuan</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL KONFIGURASI MERGED/ORGANIZED PDF KE APPROVAL -->
+    <div id="proceed-merged-modal" class="fixed inset-0 bg-black/85 hidden flex items-center justify-center p-4 z-50">
+        <div class="bg-panel w-full max-w-lg rounded-2xl shadow-2xl p-6 border border-panel space-y-4">
+            <div class="flex justify-between items-center pb-3 border-b border-panel">
+                <h3 class="font-bold text-xs text-heading">Konfigurasi Dokumen (Approval)</h3>
+                <button type="button" onclick="closeProceedMergedModal()" class="text-sub font-mono">&times;</button>
+            </div>
+            <div>
+                <label class="block text-xs font-medium text-heading mb-1">Judul Dokumen / Nama File Final</label>
+                <input type="text" id="proceed-doc-title" placeholder="Contoh: Laporan Terstruktur" class="w-full bg-input border border-panel rounded-lg px-3 py-2 text-xs text-heading outline-none focus:border-premium-gold">
+            </div>
+            <div>
+                <label class="block text-xs font-medium text-heading mb-1">Jenis Dokumen & Alur Otorisasi</label>
+                <select id="proceed-doc-type" class="w-full bg-input border border-panel rounded-lg px-3 py-2 text-xs text-heading">
+                    <option value="kdp">📁 File KDP (2 Wajib Staff KDP → Kabag → Pimpinan)</option>
+                    <option value="kasir">💵 File Kasir (Kasir Wajib → Kabag → Pimpinan)</option>
+                    <option value="admkdp">📑 File ADMKDP (ADM KDP Wajib → Kabag → Pimpinan)</option>
+                    <option value="pihak_ketiga">🤝 File Pihak Ketiga (2 Wajib Staff KDP → Kabag → Pimpinan)</option>
+                    <option value="lain_lain">🌐 File Lain-lain (Staff KDP Opsional, Kabag Bisa Langsung → Pimpinan)</option>
+                </select>
+            </div>
+            <div class="flex justify-end gap-2 pt-3 border-t border-panel">
+                <button type="button" onclick="closeProceedMergedModal()" class="px-4 py-2 bg-panel text-heading rounded-lg text-xs">Batal</button>
+                <button type="button" onclick="confirmProceedMergedPDF()" class="px-5 py-2 bg-premium-gold text-regal-black rounded-lg text-xs font-bold">Teruskan ke Approval</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL PENOLAKAN -->
+    <div id="reject-reason-modal" class="fixed inset-0 bg-black/90 hidden flex items-center justify-center p-4 z-[70]">
+        <div class="bg-panel w-full max-w-sm rounded-2xl p-5 border border-panel space-y-3">
+            <h3 class="font-bold text-xs text-heading">Alasan Penolakan Dokumen</h3>
+            <textarea id="reject-reason-input" rows="3" placeholder="Tulis alasan..." class="w-full bg-input border border-panel rounded-lg p-2 text-xs text-heading"></textarea>
+            <div class="flex justify-end gap-2">
+                <button type="button" onclick="document.getElementById('reject-reason-modal').classList.add('hidden')" class="px-3 py-1.5 bg-panel text-heading rounded-lg text-xs">Batal</button>
+                <button type="button" onclick="submitDocumentRejection()" class="px-4 py-1.5 bg-rose-600 text-white font-bold rounded-lg text-xs">Kirim</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL PREVIEW & OTORISASI -->
+    <div id="preview-modal" class="fixed inset-0 bg-black/95 hidden flex items-center justify-center p-0 sm:p-4 z-50">
+        <div id="preview-modal-content" class="bg-panel w-full h-[96vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-panel max-w-[98vw] relative">
+            <div class="px-4 py-2 bg-panel border-b border-panel flex justify-between items-center z-20 shrink-0">
+                <h3 id="modal-title" class="font-bold text-xs text-heading truncate max-w-xs">Review Dokumen</h3>
+                <button type="button" onclick="closeModal()" class="text-sub hover:text-rose-500 font-mono text-base px-2 py-1">&times;</button>
+            </div>
+
+            <div class="flex-1 overflow-hidden flex flex-col lg:flex-row relative">
+                <div id="mobile-pdf-container-wrapper" class="flex-1 relative overflow-hidden bg-app flex flex-col">
+                    <div id="pdf-scroll-view" class="flex-1 overflow-auto p-1 flex flex-col items-center relative select-none" onscroll="handlePdfScrollSync(this)">
+                        <div id="pdf-pages-stack-container" class="relative flex flex-col items-center w-full"></div>
+                        <div id="standby-cursor-stamp" class="absolute hidden pointer-events-none z-40 border-2 border-dashed border-premium-gold p-1 bg-black/40 shadow-2xl" style="width:120px; height:50px;">
+                            <div id="standby-stamp-content" class="w-full h-full flex items-center justify-center font-bold"></div>
+                        </div>
+                    </div>
+
+                    <div class="shrink-0 flex items-center justify-center py-0.5 px-3 bg-panel/90 border-t border-panel shadow-lg z-40">
+                        <span id="floating-page-indicator" class="text-[11px] text-premium-gold font-bold bg-black/80 px-2.5 py-0.5 rounded-full border border-panel/60">Halaman 1 / 1</span>
+                    </div>
+                </div>
+
+                <div id="mobile-bottom-action-panel" class="block lg:hidden space-y-1.5">
+                    <div class="flex items-center justify-between">
+                        <span class="text-[9px] font-bold text-premium-gold uppercase">CATATAN & OTORISASI</span>
+                        <span id="user-ink-badge-mob" class="text-[8px] px-1.5 py-0.2 rounded font-bold border border-panel text-heading">Warna Anda</span>
+                    </div>
+                    <div id="doc-comments-container-mob" class="bg-input/80 rounded-lg p-1.5 h-10 overflow-y-auto space-y-1 border border-panel text-[9px]"></div>
+                    <div class="flex gap-1">
+                        <input type="text" id="new-comment-input-mob" placeholder="Tulis catatan..." class="flex-1 bg-input border border-panel rounded px-2 py-0.5 text-[9px] text-heading outline-none">
+                        <button type="button" onclick="postDocumentCommentMobile()" class="bg-panel hover:bg-premium-gold hover:text-regal-black text-heading px-2 py-0.5 rounded text-[9px] font-bold">Kirim</button>
+                    </div>
+                    <div class="space-y-1">
+                        <label class="flex items-center gap-1.5 cursor-pointer text-[9px] text-heading bg-input p-1 rounded border border-panel">
+                            <input type="checkbox" id="approval-checkbox-mob" onchange="toggleApprovalButtonState()" class="accent-premium-gold w-3 h-3 shrink-0">
+                            <span>Dokumen telah dibaca & distempel paraf/tanda tangan</span>
+                        </label>
+                        <div class="grid grid-cols-2 gap-1.5" id="mobile-action-buttons-wrapper">
+                            <button type="button" onclick="processApproval('approve')" id="btn-approve-action-mob" disabled class="py-1 bg-gray-600 text-gray-300 rounded text-[9px] font-bold cursor-not-allowed">✅ Setujui</button>
+                            <button type="button" onclick="openRejectModal()" id="btn-reject-action-mob" class="py-1 bg-rose-950 border border-rose-800 text-rose-300 rounded text-[9px] font-semibold">❌ Tolak</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="hidden lg:flex w-80 bg-panel border-l border-panel p-4 flex-col justify-between shrink-0 overflow-y-auto space-y-4">
+                    <div class="space-y-3">
+                        <div class="flex items-center justify-between">
+                            <h4 class="text-[11px] font-bold text-premium-gold uppercase">Otorisasi & Stempel</h4>
+                            <span id="user-ink-badge" class="text-[10px] px-2 py-0.5 rounded font-bold border border-panel text-heading">Warna Anda</span>
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-2" id="desktop-stamp-buttons-wrapper">
+                            <button type="button" onclick="activateCursorStamp('paraf')" class="bg-input hover:bg-panel border border-panel py-2 px-2 rounded-lg text-xs font-semibold text-heading flex items-center justify-center gap-1.5"><span>✍️</span> Bubuhkan Paraf</button>
+                            <button type="button" onclick="activateCursorStamp('ttd')" class="bg-input hover:bg-panel border border-panel py-2 px-2 rounded-lg text-xs font-semibold text-heading flex items-center justify-center gap-1.5"><span>🖊️</span> Bubuhkan TTD</button>
+                        </div>
+
+                        <div class="bg-input/60 border border-panel rounded-lg p-2 text-center">
+                            <p id="preview-box-label" class="text-[9px] text-sub mb-1 font-semibold">Preview Aset Tanda Tangan / Paraf</p>
+                            <div id="desktop-single-preview-box" class="h-12 bg-panel/80 rounded border border-panel/50 flex items-center justify-center overflow-hidden">
+                                <span class="text-[9px] text-sub italic">Belum ada aset</span>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-5 gap-1 pt-1" id="desktop-insight-buttons-wrapper">
+                            <button type="button" onclick="activateCursorStamp('check')" title="Centang" class="bg-input hover:bg-panel border border-panel py-1.5 rounded text-black font-bold text-xs flex items-center justify-center">✔</button>
+                            <button type="button" onclick="activateCursorStamp('cross')" title="Silang" class="bg-input hover:bg-panel border border-panel py-1.5 rounded text-black font-bold text-xs flex items-center justify-center">✖</button>
+                            <button type="button" onclick="activateCursorStamp('highlight')" title="Stabilo" class="bg-input hover:bg-panel border border-panel py-1.5 rounded text-yellow-400 text-xs flex items-center justify-center">🖍</button>
+                            <button type="button" onclick="activateCursorStamp('redline')" title="Garis" class="bg-input hover:bg-panel border border-panel py-1.5 rounded text-blue-400 text-xs flex items-center justify-center">✎</button>
+                            <button type="button" onclick="activateCursorStamp('text')" title="Teks" class="bg-input hover:bg-panel border border-panel py-1.5 rounded text-purple-300 text-xs flex items-center justify-center">📝</button>
+                        </div>
+
+                        <div class="space-y-2 pt-2 border-t border-panel">
+                            <h4 class="text-[11px] font-bold text-premium-gold uppercase">Catatan Dokumen</h4>
+                            <div id="doc-comments-container" class="bg-input/80 rounded-xl p-2.5 h-24 overflow-y-auto space-y-2 border border-panel text-[11px]"></div>
+                            <div class="flex gap-1.5">
+                                <input type="text" id="new-comment-input" placeholder="Tulis catatan..." class="flex-1 bg-input border border-panel rounded-lg px-2.5 py-1.5 text-xs text-heading outline-none">
+                                <button type="button" onclick="postDocumentComment()" class="bg-panel hover:bg-premium-gold hover:text-regal-black text-heading px-3 py-1.5 rounded-lg text-xs font-bold">Kirim</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="space-y-3 pt-3 border-t border-panel" id="desktop-action-container">
+                        <label class="flex items-start gap-2 cursor-pointer text-[11px] text-heading leading-snug bg-input p-2.5 rounded-xl border border-panel">
+                            <input type="checkbox" id="approval-checkbox" onchange="toggleApprovalButtonState()" class="accent-premium-gold w-4 h-4 mt-0.5 shrink-0">
+                            <span>Dokumen telah saya baca dan bubuhkan paraf/tanda tangan</span>
+                        </label>
+                        <div class="space-y-2">
+                            <button type="button" onclick="processApproval('approve')" id="btn-approve-action" disabled class="w-full py-2 bg-gray-600 text-gray-300 rounded-lg text-xs font-bold cursor-not-allowed">✅ Setujui & Stempel TTD</button>
+                            <button type="button" onclick="openRejectModal()" id="btn-reject-action" class="w-full py-1.5 bg-transparent border border-rose-800 text-rose-300 rounded-lg text-xs font-semibold">❌ Tolak Dokumen</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <nav id="mobile-pdf-action-bar" aria-label="Alat dokumen ponsel">
+          <button type="button" onclick="activateCursorStamp('paraf')"><span>✍</span><span>Paraf</span></button>
+          <button type="button" onclick="activateCursorStamp('ttd')"><span>🖊</span><span>Sign</span></button>
+          <button type="button" onclick="activateCursorStamp('highlight')"><span>🖍</span><span>Stabilo</span></button>
+          <button type="button" onclick="activateCursorStamp('text')"><span>📝</span><span>Teks</span></button>
+          <button type="button" id="mobile-more-tools-btn" onclick="toggleMobileInsightMenu()"><span>☷</span><span>Lainnya</span></button>
+        </nav>
+
+        <div id="mobile-insight-menu" role="menu">
+          <button type="button" onclick="activateCursorStamp('check');toggleMobileInsightMenu(false)"><span>✔</span><span>Centang</span></button>
+          <button type="button" onclick="activateCursorStamp('cross');toggleMobileInsightMenu(false)"><span>✖</span><span>Silang</span></button>
+          <button type="button" onclick="activateCursorStamp('redline');toggleMobileInsightMenu(false)"><span>✎</span><span>Garis</span></button>
+        </div>
+    </div>
+
+    <!-- Firebase SDK (Versi Compatibility CDN) -->
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-messaging-compat.js"></script>
+
+    <script>
+      // Konfigurasi Firebase
+      const firebaseConfig = {
+        apiKey: "AIzaSyAi5YLZSr-M0yVyfuxgjsgscuTJcQYLFwE",
+        authDomain: "kdp-doku-sign.firebaseapp.com",
+        projectId: "kdp-doku-sign",
+        storageBucket: "kdp-doku-sign.firebasestorage.app",
+        messagingSenderId: "397180096578",
+        appId: "1:397180096578:web:31823d4f2ce01ed73bdddb"
+      };
+
+      // Inisialisasi Firebase & Firestore secara defensif.
+      // Variabel selalu didefinisikan agar kegagalan CDN tidak berubah menjadi
+      // error lanjutan "authPersistenceReady is not defined" saat tombol login ditekan.
+      let db = null;
+      let auth = null;
+      const ADMIN_AUTH_EMAIL = 'kdpnbk@gmail.com';
+      let authPersistenceReady = Promise.resolve(false);
+      try {
+        if (!window.firebase || typeof firebase.initializeApp !== 'function') {
+          throw new Error('Firebase SDK tidak berhasil dimuat dari server.');
+        }
+        if (!firebase.apps || !firebase.apps.length) firebase.initializeApp(firebaseConfig);
+        db = firebase.firestore();
+        auth = firebase.auth();
+        authPersistenceReady = auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL)
+          .then(() => true)
+          .catch(async err => {
+            console.error('Gagal mengatur persistensi LOCAL:', err);
+            try {
+              await auth.setPersistence(firebase.auth.Auth.Persistence.SESSION);
+              console.warn('Firebase memakai persistensi SESSION sebagai fallback.');
+              return true;
+            } catch (fallbackErr) {
+              console.error('Persistensi Firebase tidak tersedia:', fallbackErr);
+              return false;
+            }
+          });
+      } catch (firebaseInitError) {
+        window.__KDP_FIREBASE_INIT_ERROR__ = firebaseInitError;
+        console.error('Inisialisasi Firebase gagal:', firebaseInitError);
+      }
+    </script>
+    <script>
+      // Firebase Cloud Messaging: aktivasi notifikasi untuk perangkat yang sedang digunakan.
+      // Token ditahan sementara di localStorage sampai backend Cloudflare Worker diamankan.
+      const KDP_FCM_VAPID_KEY = "BMcOpRNcrF9AvUfRWnq-7qORsMtZ1woyIB2HfqgZ8PDxPz80bj-P5NcRBbaMHNTI3OrNdkeS7VJjhIhugnC4JVE";
+
+      window.enablePushNotifications = async function () {
+        const button = document.getElementById('btn-enable-push');
+        const status = document.getElementById('push-notification-status');
+        const setStatus = (message) => { if (status) status.textContent = message; };
+
+        try {
+          if (button) button.disabled = true;
+          setStatus('Memeriksa akun dan dukungan browser...');
+
+          if (!auth || !auth.currentUser || !db) {
+            throw new Error('Silakan login terlebih dahulu sebelum mengaktifkan notifikasi.');
+          }
+          if (!currentUser || !currentUser.username) {
+            throw new Error('Profil pengguna belum siap. Muat ulang aplikasi lalu coba kembali.');
+          }
+          if (!('serviceWorker' in navigator) || !('Notification' in window)) {
+            throw new Error('Browser ini belum mendukung notifikasi push.');
+          }
+          if (!window.firebase || !firebase.messaging || !(await firebase.messaging.isSupported())) {
+            throw new Error('Firebase Messaging tidak didukung pada browser/perangkat ini.');
+          }
+
+          const accountRef = db.collection('users').doc(currentUser.username);
+          const accountSnap = await accountRef.get();
+          if (!accountSnap.exists || accountSnap.data().uid !== auth.currentUser.uid) {
+            throw new Error('UID akun tidak cocok. Token perangkat tidak disimpan demi keamanan.');
+          }
+
+          let permission = Notification.permission;
+          if (permission === 'default') permission = await Notification.requestPermission();
+          if (permission !== 'granted') {
+            throw new Error('Izin notifikasi belum diberikan. Izinkan notifikasi untuk KDP DOKU SIGN pada pengaturan browser.');
+          }
+
+          const registration = await navigator.serviceWorker.register('/sw.js');
+          await navigator.serviceWorker.ready;
+
+          const messaging = firebase.messaging();
+          const token = await messaging.getToken({
+            vapidKey: KDP_FCM_VAPID_KEY,
+            serviceWorkerRegistration: registration
+          });
+
+          if (!token) {
+            throw new Error('Firebase belum memberikan token perangkat. Silakan coba kembali.');
+          }
+
+          setStatus('Token berhasil dibuat. Mendaftarkan perangkat ke server...');
+
+          const idToken = await auth.currentUser.getIdToken(true);
+          const registerResponse = await fetch('https://kdp-doku-push.kdpnbk.workers.dev/register', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer ' + idToken
+            },
+            body: JSON.stringify({
+              token: token,
+              platform: /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ? 'mobile-web' : 'desktop-web'
+            })
+          });
+
+          const registerResult = await registerResponse.json().catch(() => ({}));
+          if (!registerResponse.ok || registerResult.status !== 'ok') {
+            throw new Error(registerResult.message || 'Server gagal mendaftarkan perangkat (' + registerResponse.status + ').');
+          }
+
+          localStorage.setItem('kdp_fcm_registered_token', token);
+          localStorage.setItem('kdp_fcm_registered_uid', auth.currentUser.uid);
+
+          setStatus('Notifikasi berhasil diaktifkan dan perangkat sudah terdaftar di server.');
+          if (button) button.textContent = 'Notifikasi Aktif';
+        } catch (error) {
+          console.error('Aktivasi notifikasi push gagal:', error);
+          setStatus(error.message || 'Gagal mengaktifkan notifikasi. Silakan coba lagi.');
+        } finally {
+          if (button) button.disabled = false;
+        }
+      };
+    </script>
+<!-- Supabase JS Client SDK -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script>
+      // Inisialisasi Supabase Client untuk Storage
+      const SUPABASE_URL = "https://nzoffzewqizvaqtkvojf.supabase.co";
+      const SUPABASE_ANON_KEY = "sb_publishable_FYD7s2o0DCVO6xI17Kkd6w_DD35zv0a";
+      const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    </script>
+    <!-- SCRIPT UTAMA, REALTIME SYNC, NOTIFIKASI & 5 ATURAN FILE -->
+    <script>
+        // ==========================================
+        // FUNGSI LOG & NOTIFIKASI REAL-TIME
+        // ==========================================
+        async function recordLog(aktivitasTeks) {
+          try {
+            const namaPengguna = currentUser ? `${currentUser.fullname || currentUser.username} (${currentUser.roleTitle || 'User'})` : 'System';
+            await db.collection('activity_logs').add({
+              waktu: firebase.firestore.FieldValue.serverTimestamp(),
+              pengguna: namaPengguna,
+              aktivitas: aktivitasTeks
+            });
+          } catch (err) {
+            console.error("Gagal mencatat log:", err);
+          }
+        }
+
+        async function createNotification(targetUsername, title, message, docId = null) {
+          try {
+            await db.collection('notifications').add({
+              username: targetUsername,
+              title: title,
+              message: message,
+              docId: docId,
+              read: false,
+              waktu: firebase.firestore.FieldValue.serverTimestamp()
+            });
+          } catch (err) {
+            console.error("Gagal membuat notifikasi:", err);
+          }
+        }
+
+        // Cache browser hanya menyimpan metadata dan URL cloud, bukan isi PDF Base64.
+        // File PDF tetap berada di provider cloud agar tidak memenuhi kuota localStorage.
+        function cacheDocumentsLocally() {
+            const compactDocuments = (documents || []).map(doc => {
+                const cached = { ...doc };
+                if (typeof cached.fileData === 'string' &&
+                    /^data:application\/pdf;base64,/i.test(cached.fileData)) {
+                    cached.fileData = null;
+                    cached._fileStoredInCloud = true;
+                }
+                return cached;
+            });
+            localStorage.setItem('kdp_documents_db', JSON.stringify(compactDocuments));
+        }
+
+        function initRealtimeListeners() {
+          // 1. Listen koleksi 'documents' secara real-time (Bebas batasan 1MB per dokumen)
+          db.collection('documents').onSnapshot((snapshot) => {
+            documents = [];
+            snapshot.forEach((doc) => {
+              documents.push(doc.data());
+            });
+            documents.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+            cacheDocumentsLocally();
+            
+            if (document.getElementById('app-dashboard') && !document.getElementById('app-dashboard').classList.contains('hidden')) {
+              updateStatistics();
+              if (currentActiveMenu === 'ringkasan') renderSummaryTable();
+              if (currentActiveMenu === 'dokumen-saya') renderMyDocuments();
+              if (currentActiveMenu === 'menunggu-saya') renderPendingDocuments();
+            }
+          }, (error) => {
+            console.error("Gagal mendengarkan koleksi documents:", error);
+          });
+
+          // 2. Sumber utama akun adalah koleksi users (tidak lagi digandakan di app_state).
+          db.collection('users').onSnapshot((snapshot) => {
+            const freshUsers = {};
+            snapshot.forEach((userDoc) => {
+              freshUsers[userDoc.id] = normalizeCloudUser(userDoc.data() || {}, userDoc.id);
+            });
+            usersDatabase = freshUsers;
+            localStorage.setItem('kdp_users_db', JSON.stringify(usersDatabase));
+            if (currentUser && usersDatabase[currentUser.username]) {
+              currentUser = usersDatabase[currentUser.username];
+              updateUIUserDisplay();
+              loadChatUsers();
+            }
+          }, (error) => console.error('Gagal mendengarkan koleksi users:', error));
+
+          // 3. Listen Timeline Aktivitas
+          const tbody = document.getElementById('activityLogBody');
+          if (tbody) {
+            db.collection('activity_logs').orderBy('waktu', 'desc').limit(10).onSnapshot((snapshot) => {
+              tbody.innerHTML = '';
+              if (snapshot.empty) {
+                tbody.innerHTML = `<tr><td colspan="3" class="py-4 text-center text-sub text-xs">Belum ada aktivitas tercatat.</td></tr>`;
+                return;
+              }
+              snapshot.forEach((doc) => {
+                const data = doc.data();
+                let waktuFormat = 'Baru saja';
+                if (data.waktu && data.waktu.toDate) {
+                  const d = data.waktu.toDate();
+                  waktuFormat = d.toLocaleDateString('id-ID', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' }) + ' ' + d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+                }
+                tbody.innerHTML += `
+                  <tr class="border-b border-panel text-xs hover:bg-panel/50 transition-colors">
+                    <td class="py-2.5 px-3 text-sub whitespace-nowrap">${waktuFormat}</td>
+                    <td class="py-2.5 px-3 font-semibold text-premium-gold whitespace-nowrap">${data.pengguna || '-'}</td>
+                    <td class="py-2.5 px-3 text-heading">${data.aktivitas || '-'}</td>
+                  </tr>
+                `;
+              });
+            });
+          }
+
+          // 4. Listen Notifikasi untuk User Aktif
+          if (currentUser) {
+            db.collection('notifications')
+              .where('username', '==', currentUser.username)
+              .orderBy('waktu', 'desc')
+              .onSnapshot((snapshot) => {
+                notifications = [];
+                snapshot.forEach(doc => {
+                  notifications.push({ id: doc.id, ...doc.data() });
+                });
+                renderNotificationsUI();
+              });
+          }
+        }
+
+              // Listen Timeline Aktivitas
+          const tbody = document.getElementById('activityLogBody');
+          if (tbody) {
+            db.collection('activity_logs').orderBy('waktu', 'desc').limit(10).onSnapshot((snapshot) => {
+              tbody.innerHTML = '';
+              if (snapshot.empty) {
+                tbody.innerHTML = `<tr><td colspan="3" class="py-4 text-center text-sub text-xs">Belum ada aktivitas tercatat.</td></tr>`;
+                return;
+              }
+              snapshot.forEach((doc) => {
+                const data = doc.data();
+                let waktuFormat = 'Baru saja';
+                if (data.waktu && data.waktu.toDate) {
+                  const d = data.waktu.toDate();
+                  waktuFormat = d.toLocaleDateString('id-ID', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' }) + ' ' + d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+                }
+                tbody.innerHTML += `
+                  <tr class="border-b border-panel text-xs hover:bg-panel/50 transition-colors">
+                    <td class="py-2.5 px-3 text-sub whitespace-nowrap">${waktuFormat}</td>
+                    <td class="py-2.5 px-3 font-semibold text-premium-gold whitespace-nowrap">${data.pengguna || '-'}</td>
+                    <td class="py-2.5 px-3 text-heading">${data.aktivitas || '-'}</td>
+                  </tr>
+                `;
+              });
+            });
+          }
+
+          // Listen Notifikasi untuk User Aktif
+          if (currentUser) {
+            db.collection('notifications')
+              .where('username', '==', currentUser.username)
+              .orderBy('waktu', 'desc')
+              .onSnapshot((snapshot) => {
+                notifications = [];
+                snapshot.forEach(doc => {
+                  notifications.push({ id: doc.id, ...doc.data() });
+                });
+                renderNotificationsUI();
+              });
+          }
+        
+// Helper konversi file PNG ke Base64 (agar TTD & Paraf tersimpan permanen)
+function fileToBase64(file) {
+    return new Promise((resolve, reject) => {
+        if (!file) return resolve(null);
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = error => reject(error);
+    });
+}
+
+        function renderNotificationsUI() {
+          const listContainer = document.getElementById('notif-list-container');
+          const badgeCount = document.getElementById('notif-badge-count');
+          if (!listContainer || !badgeCount) return;
+
+          const unreadCount = notifications.filter(n => !n.read).length;
+          if (unreadCount > 0) {
+            badgeCount.innerText = unreadCount;
+            badgeCount.classList.remove('hidden');
+          } else {
+            badgeCount.classList.add('hidden');
+          }
+
+          if (notifications.length === 0) {
+            listContainer.innerHTML = `<div class="p-3 text-center text-sub">Tidak ada notifikasi.</div>`;
+            return;
+          }
+
+          listContainer.innerHTML = notifications.map(n => `
+            <div class="p-2.5 hover:bg-input transition cursor-pointer ${n.read ? 'opacity-70' : 'bg-input/40 font-semibold'}" onclick="handleNotificationClick('${n.id}', ${n.docId})">
+              <p class="text-heading font-bold">${n.title}</p>
+              <p class="text-sub text-[10px] mt-0.5">${n.message}</p>
+            </div>
+          `).join('');
+        }
+
+        function toggleNotificationDropdown() {
+          const dropdown = document.getElementById('notif-dropdown');
+          if (dropdown) dropdown.classList.toggle('hidden');
+        }
+
+        async function markAllNotificationsAsRead() {
+          const batch = db.batch();
+          notifications.forEach(n => {
+            if (!n.read) {
+              const ref = db.collection('notifications').doc(n.id);
+              batch.update(ref, { read: true });
+            }
+          });
+          await batch.commit();
+        }
+
+        function handleNotificationClick(notifId, docId) {
+          db.collection('notifications').doc(notifId).update({ read: true });
+          toggleNotificationDropdown();
+          if (docId) openPreview(docId);
+        }
+
+        let utilityMergeFilesArray = [];
+        let utilityLastMergedBlob = null;
+        let utilityOrgSourceFile = null;
+        let utilityOrgPagesArray = [];
+        let utilityLastOrganizedBlob = null;
+        let draggedThumbnailIndex = null;
+        let draggedCardIndex = null;
+
+        const menuTitlesMap = {
+            'ringkasan': 'Ringkasan & Timeline Aktivitas',
+            'dokumen-saya': 'Daftar Dokumen Saya',
+            'menunggu-saya': 'Dokumen Perlu Tindakan Anda',
+            'utilities': 'Utilitas PDF',
+            'utility-merge': 'Gabung File PDF',
+            'utility-organize-pages': 'Atur & Susun Halaman PDF',
+            'admin-panel': 'Manajemen Pengguna Sistem',
+            'tambah-user': 'Pendaftaran User Baru',
+            'edit-user': 'Formulir Edit User',
+            'kontak': 'Direktori Kontak Tim',
+            'profil': 'Profil Saya & Manajemen Aset',
+            'pengaturan': 'Pengaturan Sistem & Tema'
+        };
+
+        // RETENSI DOKUMEN: ditolak 5 hari, selesai 60 hari.
+const KDP_RETENTION = { rejectedDays: 5, completedDays: 60 };
+const KDP_DAY_MS = 24 * 60 * 60 * 1000;
+function isRejectedDocument(doc) { return doc.step === 0 || String(doc.status || '').startsWith('Ditolak'); }
+function isCompletedDocument(doc) { return !!doc.isCompleted || String(doc.status || '').startsWith('Selesai'); }
+function getDocumentRetentionStart(doc) {
+    if (isRejectedDocument(doc)) return Number(doc.rejectedAt || doc.lastUpdated || doc.createdAt || 0);
+    if (isCompletedDocument(doc)) return Number(doc.completedAt || doc.lastUpdated || doc.createdAt || 0);
+    return 0;
+}
+async function deleteCloudAsset(asset) {
+    if (!asset || !asset.storageType) return;
+    if (!['cloudinary', 'r2', 'supabase'].includes(asset.storageType)) {
+        throw new Error(`Provider penyimpanan tidak dikenal: ${asset.storageType}`);
+    }
+    if (!KDP_STORAGE_DELETE_ENDPOINT) throw new Error('Endpoint backend penghapusan belum dikonfigurasi.');
+    const user = auth.currentUser;
+    if (!user) throw new Error('Sesi login tidak tersedia. Silakan login kembali.');
+    const token = await user.getIdToken(true);
+    const response = await fetch(`${KDP_STORAGE_DELETE_ENDPOINT}/delete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ action: 'delete', asset })
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || !result.success) throw new Error(result.error || `Gagal menghapus ${asset.storageType}.`);
+}
+function getDocAssets(doc) {
+    const assets = [];
+    if (doc.fileData && doc.storageType) assets.push({ storageType:doc.storageType, storagePath:doc.storagePath, storageBucket:doc.storageBucket, publicId:doc.storagePublicId, url:doc.fileData });
+    return assets;
+}
+
+// Metadata aset profil disimpan terpisah per jenis agar dapat dihapus dari provider asal.
+function getProfileAsset(user, fieldName) {
+    if (!user || !user[fieldName]) return null;
+    const prefix = fieldName.replace('Png', '');
+    const storageType = user[`${prefix}StorageType`];
+    if (!storageType) return null; // aset lama tanpa metadata: jangan menebak lokasi fisiknya.
+    return {
+        storageType,
+        storagePath: user[`${prefix}StoragePath`] || null,
+        storageBucket: user[`${prefix}StorageBucket`] || null,
+        publicId: user[`${prefix}StoragePublicId`] || null,
+        url: user[fieldName]
+    };
+}
+function setProfileAssetMetadata(user, fieldName, result) {
+    const prefix = fieldName.replace('Png', '');
+    user[fieldName] = result.fileData;
+    user[`${prefix}StorageType`] = result.storageType;
+    user[`${prefix}StoragePath`] = result.storagePath || null;
+    user[`${prefix}StorageBucket`] = result.storageBucket || null;
+    user[`${prefix}StoragePublicId`] = result.storagePublicId || null;
+    user[`${prefix}SizeBytes`] = result.sizeBytes;
+}
+async function deleteReplacedProfileAsset(oldAsset, newUrl) {
+    if (!oldAsset || oldAsset.url === newUrl) return;
+    // Jangan menghapus aset lama sampai metadata URL baru berhasil disimpan.
+    await deleteCloudAsset(oldAsset);
+}
+async function deleteDocumentEverywhere(doc) {
+    // Hapus objek fisik lebih dahulu. Jika satu provider gagal, metadata tetap dipertahankan.
+    for (const asset of getDocAssets(doc)) await deleteCloudAsset(asset);
+    await db.collection('documents').doc(doc.id).delete();
+    documents = documents.filter(item => item.id !== doc.id);
+    cacheDocumentsLocally();
+    await saveStateToCloud();
+    await recordLog(`Penghapusan permanen dokumen dan seluruh objek cloud: ${doc.title || doc.id}`);
+}
+async function autoCleanupExpiredDocuments() {
+    if (!documents || !documents.length) return;
+    const now = Date.now();
+    const expired = documents.filter(doc => {
+        const rejected = isRejectedDocument(doc), completed = isCompletedDocument(doc);
+        if (!rejected && !completed) return false;
+        const start = getDocumentRetentionStart(doc);
+        const limit = (rejected ? KDP_RETENTION.rejectedDays : KDP_RETENTION.completedDays) * KDP_DAY_MS;
+        return start > 0 && now - start >= limit;
+    });
+    for (const doc of expired) {
+        try { await deleteDocumentEverywhere(doc); }
+        catch (err) { console.error('Auto-cleanup gagal; metadata dipertahankan untuk percobaan berikutnya:', doc.id, err); }
+    }
+    if (expired.length) { updateStatistics(); renderSummaryTable(); }
+}
+function calculateRemainingDays(doc) {
+    const start = getDocumentRetentionStart(doc);
+    if (!start) return isRejectedDocument(doc) ? KDP_RETENTION.rejectedDays : KDP_RETENTION.completedDays;
+    const days = isRejectedDocument(doc) ? KDP_RETENTION.rejectedDays : KDP_RETENTION.completedDays;
+    return Math.max(0, Math.ceil((days * KDP_DAY_MS - (Date.now() - start)) / KDP_DAY_MS));
+}
+
+        function formatDocDate(timestamp) {
+            if (!timestamp) return '-';
+            const d = new Date(timestamp);
+            if (isNaN(d.getTime())) return '-';
+            const days = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+            return `${days[d.getDay()]}, ${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+        }
+
+        function normalizeCloudUser(raw, usernameHint = '') {
+            const position = raw.position || raw.role || 'staff_kdp';
+            const username = String(raw.username || usernameHint).trim().toLowerCase();
+            return {
+                ...raw,
+                username,
+                email: raw.email || "",
+                fullname: raw.fullname || raw.fullName || username,
+                position,
+                roleTitle: raw.roleTitle || roleTitlesMap[position] || position,
+                inkColor: raw.inkColor || raw.stampColor || '#2563eb',
+                parafPng: raw.parafPng || raw.parafUrl || null,
+                ttdPng: raw.ttdPng || raw.ttdUrl || null,
+                avatarPng: raw.avatarPng || raw.avatarUrl || null
+            };
+        }
+
+        async function loadUsersFromFirebase() {
+            try {
+                const snapshot = await db.collection('users').get();
+                snapshot.forEach(doc => {
+                    const raw = doc.data() || {};
+                    const user = normalizeCloudUser(raw, doc.id);
+                    if (user.username) usersDatabase[user.username] = user;
+                });
+                localStorage.setItem('kdp_users_db', JSON.stringify(usersDatabase));
+            } catch (err) {
+                console.error('Gagal memuat koleksi users dari Firestore:', err);
+            }
+        }
+
+        async function loadStateFromCloud() {
+            try {
+                const docSnap = await db.collection('app_state').doc('database').get();
+                if (docSnap.exists) {
+                    const data = docSnap.data();
+                    if (data.documents) documents = data.documents;
+                    if (data.usersDatabase) usersDatabase = { ...usersDatabase, ...data.usersDatabase };
+                    
+                    cacheDocumentsLocally();
+                    localStorage.setItem('kdp_users_db', JSON.stringify(usersDatabase));
+                }
+                await loadUsersFromFirebase();
+            } catch (err) {
+                console.error("Gagal memuat dari Firestore:", err);
+            }
+        }
+
+        window.addEventListener('DOMContentLoaded', async () => {
+            const authScreen = document.getElementById('auth-screen');
+            const dashboard = document.getElementById('app-dashboard');
+
+            // Kedua halaman utama tetap tersembunyi sampai Firebase mengirim
+            // status autentikasi awal (sesi tersimpan sudah selesai dipulihkan).
+            if (authScreen) authScreen.classList.add('hidden');
+            if (dashboard) dashboard.classList.add('hidden');
+
+            try {
+                if (!auth || !db) throw new Error('Firebase SDK tidak tersedia. Periksa pemuatan script Firebase.');
+                await authPersistenceReady;
+                const authUser = await new Promise((resolve, reject) => {
+                    let unsubscribe = null;
+                    unsubscribe = auth.onAuthStateChanged(
+                        user => {
+                            if (unsubscribe) unsubscribe();
+                            resolve(user || null);
+                        },
+                        error => {
+                            if (unsubscribe) unsubscribe();
+                            reject(error);
+                        }
+                    );
+                });
+
+                await loadStateFromCloud();
+                autoCleanupExpiredDocuments();
+                initRealtimeListeners();
+
+                if (authUser) {
+                    const profileSnap = await db.collection('users')
+                        .where('uid', '==', authUser.uid).limit(1).get();
+                    if (!profileSnap.empty) {
+                        const profileDoc = profileSnap.docs[0];
+                        currentUser = normalizeCloudUser(profileDoc.data(), profileDoc.id);
+                        updateKiraAccessMode(true);
+                        currentUser.uid = authUser.uid;
+                        initChatRealtime();
+                        currentUser.email = authUser.email || currentUser.email;
+                        usersDatabase[currentUser.username] = currentUser;
+                        localStorage.setItem('kdp_users_db', JSON.stringify(usersDatabase));
+                        localStorage.setItem('kdp_current_user', currentUser.username);
+
+                        if (authScreen) authScreen.classList.add('hidden');
+                        if (dashboard) dashboard.classList.remove('hidden');
+                        updateUIUserDisplay();
+                        updateStatistics();
+                        const savedMenu = localStorage.getItem('kdp_active_menu');
+                        switchMenu(savedMenu || 'ringkasan');
+                    } else {
+                        console.error('Sesi Firebase aktif, tetapi profil pengguna tidak ditemukan.');
+                        await auth.signOut();
+                        currentUser = null;
+                        localStorage.removeItem('kdp_current_user');
+                        if (authScreen) authScreen.classList.remove('hidden');
+                        if (dashboard) dashboard.classList.add('hidden');
+                    }
+                } else {
+                    currentUser = null;
+                    updateKiraAccessMode(true);
+                    if (authScreen) authScreen.classList.remove('hidden');
+                    if (dashboard) dashboard.classList.add('hidden');
+                }
+            } catch (err) {
+                console.error('Inisialisasi autentikasi aplikasi gagal:', err);
+                currentUser = null;
+                if (authScreen) authScreen.classList.remove('hidden');
+                if (dashboard) dashboard.classList.add('hidden');
+            } finally {
+                document.body.classList.remove('auth-initializing');
+                document.body.classList.add('loaded');
+            }
+        });
+
+        async function saveStateToCloud() {
+            // Cache lokal saja. Data cloud disimpan satu kali pada koleksi sumber masing-masing:
+            // users -> akun, documents -> metadata dokumen, activity_logs -> log.
+            // File fisik -> satu provider hasil handleFileRouting().
+            try {
+                if (currentUser) {
+                    localStorage.setItem('kdp_current_user', currentUser.username);
+                    localStorage.setItem('kdp_active_menu', currentActiveMenu);
+                } else {
+                    localStorage.removeItem('kdp_current_user');
+                }
+                cacheDocumentsLocally();
+                localStorage.setItem('kdp_users_db', JSON.stringify(usersDatabase));
+                return true;
+            } catch (err) {
+                console.error('Gagal memperbarui cache lokal:', err);
+                throw err;
+            }
+        }
+
+        function setThemeMode(theme) {
+            const selectedTheme = theme === 'dark' ? 'dark' : 'light';
+            document.body.classList.toggle('dark-theme', selectedTheme === 'dark');
+            document.body.classList.toggle('light-theme', selectedTheme === 'light');
+
+            // Simpan pilihan agar tetap berlaku setelah refresh dan login ulang.
+            try { localStorage.setItem('kdp_theme_mode', selectedTheme); } catch (err) {
+                console.warn('Preferensi tema tidak dapat disimpan:', err);
+            }
+
+            const themeColor = document.querySelector('meta[name="theme-color"]');
+            if (themeColor) themeColor.setAttribute('content', selectedTheme === 'dark' ? '#0a0a0a' : '#f4f5f7');
+
+            const darkButton = document.querySelector('#section-pengaturan button[onclick*="dark"]');
+            const lightButton = document.querySelector('#section-pengaturan button[onclick*="light"]');
+            if (darkButton && lightButton) {
+                darkButton.className = selectedTheme === 'dark'
+                    ? 'py-2 rounded-xl border border-premium-gold text-xs font-bold bg-panel text-premium-gold'
+                    : 'py-2 rounded-xl border border-panel text-xs font-semibold bg-input text-sub';
+                lightButton.className = selectedTheme === 'light'
+                    ? 'py-2 rounded-xl border border-premium-gold text-xs font-bold bg-panel text-premium-gold'
+                    : 'py-2 rounded-xl border border-panel text-xs font-semibold bg-input text-sub';
+            }
+        }
+
+        // Terapkan preferensi tersimpan; jika belum pernah memilih, gunakan tema terang.
+        (function initializeThemeMode() {
+            let savedTheme = 'light';
+            try {
+                const storedTheme = localStorage.getItem('kdp_theme_mode');
+                if (storedTheme === 'dark' || storedTheme === 'light') savedTheme = storedTheme;
+            } catch (err) {}
+            setThemeMode(savedTheme);
+        })();
+
+        function updateLiveDateTime() {
+            const now = new Date();
+            const days = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+            const el = document.getElementById('live-datetime');
+            if (el) el.innerText = `${days[now.getDay()]}, ${String(now.getDate()).padStart(2,'0')}/${String(now.getMonth()+1).padStart(2,'0')}/${now.getFullYear()} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')} WIB`;
+        }
+        setInterval(updateLiveDateTime, 1000);
+        updateLiveDateTime();
+
+        function goToHome() { if (currentUser) switchMenu('ringkasan'); else toggleAuthForm('login'); }
+        function toggleAuthForm(target) {
+            if (target === 'register') { document.getElementById('login-form-container').classList.add('hidden'); document.getElementById('register-form-container').classList.remove('hidden'); }
+            else { document.getElementById('register-form-container').classList.add('hidden'); document.getElementById('login-form-container').classList.remove('hidden'); }
+        }
+
+        function togglePasswordVisibility(inputId, btn) {
+            const input = document.getElementById(inputId);
+            if (input.type === 'password') { input.type = 'text'; btn.innerText = '🙈'; }
+            else { input.type = 'password'; btn.innerText = '👁️'; }
+        }
+
+        window.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                activeStandbyType = null;
+                const standby = document.getElementById('standby-cursor-stamp');
+                if (standby) standby.classList.add('hidden');
+                showToast('Pilihan dibatalkan.', 2000);
+            }
+        });
+
+        function readFileAsBase64(file) {
+            return new Promise((resolve, reject) => {
+                if (!file) { resolve(null); return; }
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result);
+                reader.onerror = (err) => reject(err);
+                reader.readAsDataURL(file);
+            });
+        }
+
+        function readFileAsArrayBuffer(file) {
+            return new Promise((resolve, reject) => {
+                if (!file) { resolve(null); return; }
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result);
+                reader.onerror = (err) => reject(err);
+                reader.readAsArrayBuffer(file);
+            });
+        }
+
+        function arrayBufferToBase64DataUrl(buffer, mimeType = 'application/pdf') {
+            let binary = '';
+            const bytes = new Uint8Array(buffer);
+            const len = bytes.byteLength;
+            for (let i = 0; i < len; i++) {
+                binary += String.fromCharCode(bytes[i]);
+            }
+            return `data:${mimeType};base64,` + window.btoa(binary);
+        }
+
+        async function handleRegister() {
+            const fullname = document.getElementById('reg-fullname').value.trim();
+            const email = document.getElementById('reg-email').value.trim().toLowerCase();
+            const username = document.getElementById('reg-username').value.trim().toLowerCase();
+            const position = document.getElementById('reg-position').value;
+            const inkColor = document.getElementById('reg-ink-color').value;
+            const password = document.getElementById('reg-password').value;
+            const confirmPass = document.getElementById('reg-confirm-password').value;
+            const parafFile = document.getElementById('reg-paraf-file').files[0];
+            const ttdFile = document.getElementById('reg-ttd-file').files[0];
+
+            if (!fullname || !email || !username || !password) { alert('Nama lengkap, email, username, dan sandi wajib diisi.'); return; }
+            if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { alert('Format email tidak valid.'); return; }
+            if (!/^[a-z0-9._-]{3,32}$/.test(username)) { alert('Username harus 3–32 karakter: huruf kecil, angka, titik, garis bawah, atau tanda hubung.'); return; }
+            if (!['staff_kdp', 'kasir'].includes(position)) { alert('Pendaftaran mandiri hanya untuk Staff KDP dan Kasir. Role lainnya dibuat oleh Administrator.'); return; }
+            if (password !== confirmPass) { alert('Sandi dan konfirmasi sandi tidak cocok!'); return; }
+            if (password.length < 8) { alert('Gunakan sandi minimal 8 karakter.'); return; }
+
+            const button = document.querySelector('#register-form-container button[onclick="handleRegister()"]');
+            if (button) { button.disabled = true; button.textContent = 'Menyimpan...'; }
+            let createdAuthUser = null;
+            try {
+                if (!auth || !db) throw new Error('Firebase belum termuat. Muat ulang halaman dan periksa koneksi/CDN.');
+                await authPersistenceReady;
+                const userRef = db.collection('users').doc(username);
+                const existing = await userRef.get();
+                if (existing.exists || usersDatabase[username]) throw new Error('Username sudah terdaftar!');
+
+                const emailCheck = await db.collection('users').where('email', '==', email).limit(1).get();
+                if (!emailCheck.empty) throw new Error('Email sudah digunakan oleh akun lain.');
+
+                // Buat identitas autentikasi terlebih dahulu; password tidak disimpan di Firestore.
+                const credential = await auth.createUserWithEmailAndPassword(email, password);
+                createdAuthUser = credential.user;
+
+                const parafAsset = parafFile ? await handleFileRouting(parafFile, 'profile/paraf') : null;
+                const ttdAsset = ttdFile ? await handleFileRouting(ttdFile, 'profile/ttd') : null;
+                const user = {
+                    uid: createdAuthUser.uid,
+                    email, fullname, username, position,
+                    roleTitle: roleTitlesMap[position] || position,
+                    inkColor,
+                    init: fullname.split(' ').filter(Boolean).map(n => n[0]).join('').toUpperCase().substring(0, 2),
+                    avatarPng: null,
+                    parafPng: parafAsset ? parafAsset.fileData : null,
+                    parafStorageType: parafAsset ? parafAsset.storageType : null,
+                    parafStoragePath: parafAsset ? parafAsset.storagePath : null,
+                    parafStorageBucket: parafAsset ? parafAsset.storageBucket : null,
+                    parafStoragePublicId: parafAsset ? parafAsset.storagePublicId : null,
+                    parafSizeBytes: parafAsset ? parafAsset.sizeBytes : null,
+                    ttdPng: ttdAsset ? ttdAsset.fileData : null,
+                    ttdStorageType: ttdAsset ? ttdAsset.storageType : null,
+                    ttdStoragePath: ttdAsset ? ttdAsset.storagePath : null,
+                    ttdStorageBucket: ttdAsset ? ttdAsset.storageBucket : null,
+                    ttdStoragePublicId: ttdAsset ? ttdAsset.storagePublicId : null,
+                    ttdSizeBytes: ttdAsset ? ttdAsset.sizeBytes : null,
+                    createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                };
+                await userRef.set(user);
+                usersDatabase[username] = { ...user, createdAt: new Date().toISOString() };
+                delete usersDatabase[username].createdAt?.seconds;
+                localStorage.setItem('kdp_users_db', JSON.stringify(usersDatabase));
+                try { await saveStateToCloud(); } catch (syncErr) { console.warn('app_state tidak tersinkron:', syncErr); }
+
+                // createUserWithEmailAndPassword otomatis membuat sesi login.
+                // Akhiri sesi agar pendaftaran kembali ke form login, bukan dashboard.
+                try { await auth.signOut(); } catch (signOutErr) { console.warn('Sesi pendaftaran belum berhasil ditutup:', signOutErr); }
+
+                recordLog(`Mendaftarkan akun baru: ${fullname} (${user.roleTitle})`);
+                toggleAuthForm('login');
+                document.getElementById('login-username').value = email;
+                document.getElementById('login-password').value = '';
+                showToast('Pendaftaran berhasil. Silakan masuk.');
+            } catch (err) {
+                console.error('Pendaftaran gagal:', err);
+                // Jika akun Auth sudah dibuat tetapi penulisan profil gagal, jangan menghapus identitas Auth.
+                alert('Pendaftaran gagal: ' + (err.message || err));
+            } finally {
+                if (button) { button.disabled = false; button.textContent = 'Daftar Akun'; }
+            }
+        }
+
+        async function handleLogin() {
+            const identifier = document.getElementById('login-username').value.trim();
+            const password = document.getElementById('login-password').value;
+            if (!identifier || !password) { alert('Username/email dan password wajib diisi!'); return; }
+
+            const isAdministratorLogin = identifier.toLowerCase() === 'admin';
+            try {
+                if (!auth || !db) throw new Error('Firebase SDK belum berhasil dimuat. Periksa koneksi internet atau akses ke www.gstatic.com, lalu muat ulang halaman.');
+                await authPersistenceReady;
+                let profile = null;
+                let profileRef = null;
+                let email = identifier.toLowerCase();
+                let credential;
+
+                if (isAdministratorLogin) {
+                    // Admin tidak menggunakan email pribadi dan tidak melalui registrasi mandiri.
+                    // Akun Auth dibuat satu kali secara manual di Firebase Console.
+                    email = ADMIN_AUTH_EMAIL;
+                    credential = await auth.signInWithEmailAndPassword(email, password);
+                    profileRef = db.collection('users').doc('admin');
+                    const adminSnap = await profileRef.get();
+                    if (!adminSnap.exists) {
+                        await auth.signOut();
+                        alert('Akun Firebase Administrator berhasil dikenali, tetapi profil users/admin belum dibuat di Firestore. Buat dokumen admin sesuai panduan setup.');
+                        return;
+                    }
+                    profile = normalizeCloudUser(adminSnap.data() || {}, 'admin');
+                    if (profile.position !== 'administrator' || (profile.uid && profile.uid !== credential.user.uid)) {
+                        await auth.signOut();
+                        alert('Profil Administrator tidak valid atau UID tidak cocok. Periksa dokumen users/admin di Firestore.');
+                        return;
+                    }
+                    if (!profile.uid) {
+                        await auth.signOut();
+                        alert('UID Administrator belum diisi pada dokumen users/admin. Lengkapi UID dari Firebase Authentication.');
+                        return;
+                    }
+                } else {
+                    if (!identifier.includes('@')) {
+                        profileRef = db.collection('users').doc(identifier.toLowerCase());
+                        const profileSnap = await profileRef.get();
+                        if (!profileSnap.exists) {
+                            alert('Username tidak ditemukan. Periksa kembali username Anda.');
+                            return;
+                        }
+                        profile = normalizeCloudUser(profileSnap.data(), identifier);
+                        email = (profile.email || '').trim().toLowerCase();
+                    } else {
+                        const byEmail = await db.collection('users').where('email', '==', email).limit(1).get();
+                        if (!byEmail.empty) {
+                            const doc = byEmail.docs[0];
+                            profileRef = doc.ref;
+                            profile = normalizeCloudUser(doc.data(), doc.id);
+                        }
+                    }
+
+                    if (!email || !email.includes('@')) {
+                        alert('Email akun ini belum tersimpan pada profil. Hubungi Administrator untuk melengkapi email sebelum login.');
+                        return;
+                    }
+
+                    try {
+                        credential = await auth.signInWithEmailAndPassword(email, password);
+                    } catch (authError) {
+                        const legacyEligible = profile && profile.password && profile.password === password;
+                        const accountMissing = ['auth/user-not-found', 'auth/invalid-credential'].includes(authError.code);
+
+                        // Migrasi akun lama hanya memakai email yang sudah tercatat pada profil.
+                        if (!legacyEligible || !accountMissing) throw authError;
+
+                        try {
+                            credential = await auth.createUserWithEmailAndPassword(email, password);
+                        } catch (createError) {
+                            if (createError.code === 'auth/email-already-in-use') {
+                                credential = await auth.signInWithEmailAndPassword(email, password);
+                            } else {
+                                throw createError;
+                            }
+                        }
+                        profile.uid = credential.user.uid;
+                        profile.email = email;
+                        delete profile.password;
+                        await profileRef.set({
+                            uid: credential.user.uid,
+                            email,
+                            migratedToFirebaseAuth: true,
+                            password: firebase.firestore.FieldValue.delete(),
+                            authMigratedAt: firebase.firestore.FieldValue.serverTimestamp()
+                        }, { merge: true });
+                        showToast('Akun lama berhasil dihubungkan ke Firebase Authentication.', 3500);
+                    }
+
+                    if (!profile && credential.user) {
+                        const matches = await db.collection('users').where('uid', '==', credential.user.uid).limit(1).get();
+                        if (!matches.empty) {
+                            const doc = matches.docs[0];
+                            profileRef = doc.ref;
+                            profile = normalizeCloudUser(doc.data(), doc.id);
+                        }
+                    }
+
+                    if (!profile || !profileRef) {
+                        await auth.signOut();
+                        alert('Autentikasi berhasil, tetapi profil pengguna tidak ditemukan. Hubungi Administrator.');
+                        return;
+                    }
+                }
+
+                profile.uid = credential.user.uid;
+                profile.email = credential.user.email || email;
+                delete profile.password;
+                await profileRef.set({
+                    uid: profile.uid,
+                    email: profile.email,
+                    lastLoginAt: firebase.firestore.FieldValue.serverTimestamp(),
+                    password: firebase.firestore.FieldValue.delete()
+                }, { merge: true });
+
+                currentUser = profile;
+                updateKiraAccessMode(true);
+                usersDatabase[currentUser.username] = profile;
+                localStorage.setItem('kdp_users_db', JSON.stringify(usersDatabase));
+                localStorage.setItem('kdp_current_user', currentUser.username);
+                document.getElementById('auth-screen').classList.add('hidden');
+                document.getElementById('app-dashboard').classList.remove('hidden');
+                updateUIUserDisplay();
+                updateStatistics();
+                switchMenu('ringkasan');
+                initRealtimeListeners();
+                initChatRealtime();
+                showToast(`Selamat datang, ${currentUser.fullname}!`);
+                recordLog(`Login ke sistem: ${currentUser.fullname}`);
+                document.getElementById('login-username').value = '';
+                document.getElementById('login-password').value = '';
+            } catch (err) {
+                console.error('Login Firebase Authentication gagal:', err);
+                const messages = {
+                    'auth/invalid-credential': 'Username/email atau password salah.',
+                    'auth/user-not-found': isAdministratorLogin
+                        ? 'Akun Administrator belum dibuat di Firebase Authentication. Ikuti langkah setup akun admin.'
+                        : 'Akun Firebase Authentication belum ditemukan. Hubungi Administrator untuk pemeriksaan akun.',
+                    'auth/wrong-password': 'Password salah.',
+                    'auth/invalid-email': 'Identitas email internal Administrator tidak valid. Periksa konfigurasi aplikasi.',
+                    'auth/too-many-requests': 'Terlalu banyak percobaan. Coba beberapa saat lagi.'
+                };
+                alert(messages[err.code] || ('Login gagal: ' + (err.message || err)));
+            }
+        }
+
+        function updateUIUserDisplay() {
+            if (!currentUser) return;
+            document.getElementById('current-user-name').innerText = currentUser.fullname;
+            document.getElementById('current-user-role').innerText = currentUser.roleTitle;
+            document.getElementById('banner-user-name').innerHTML = `${currentUser.fullname} 🔗`;
+            document.getElementById('banner-user-role').innerText = currentUser.roleTitle;
+            
+            const avatarHtml = currentUser.avatarPng 
+                ? `<img src="${currentUser.avatarPng}" class="w-full h-full object-cover" />` 
+                : (currentUser.init || 'SA');
+
+            document.querySelectorAll('.sidebar-avatar-box, .banner-avatar-box').forEach(el => {
+                if(el) {
+                    el.innerHTML = avatarHtml;
+                    if(currentUser.avatarPng) el.classList.remove('bg-panel');
+                }
+            });
+
+            ['user-ink-badge', 'user-ink-badge-mob'].forEach(id => {
+                const badge = document.getElementById(id);
+                if(badge) {
+                    badge.style.backgroundColor = currentUser.inkColor || '#2563eb';
+                    badge.style.color = '#fff';
+                    badge.innerText = `Tinta: ${currentUser.fullname.split(' ')[0]}`;
+                }
+            });
+
+            updatePreviewBox('paraf');
+
+            const adminMenuBtn = document.getElementById('menu-admin-panel');
+            if (['administrator', 'kabag', 'pimpinan'].includes(currentUser.position)) {
+                adminMenuBtn.classList.remove('hidden');
+                adminMenuBtn.classList.add('flex');
+            } else {
+                adminMenuBtn.classList.add('hidden');
+                adminMenuBtn.classList.remove('flex');
+            }
+
+            const buatPtkpBtn = document.getElementById('nav-btn-buat-ptkp');
+            if (buatPtkpBtn) {
+                if (currentUser.position === 'staff_kdp' || currentUser.position === 'kabag') {
+                    buatPtkpBtn.classList.remove('hidden');
+                    buatPtkpBtn.classList.add('flex');
+                } else {
+                    buatPtkpBtn.classList.add('hidden');
+                    buatPtkpBtn.classList.remove('flex');
+                }
+            }
+        }
+
+        function updatePreviewBox(type) {
+            const singleBox = document.getElementById('desktop-single-preview-box');
+            const previewLabel = document.getElementById('preview-box-label');
+            if (!singleBox || !currentUser) return;
+
+            if (type === 'ttd') {
+                if (previewLabel) previewLabel.innerText = 'Preview Aset Tanda Tangan (TTD)';
+                const src = currentUser.ttdPng;
+                singleBox.innerHTML = src ? `<img src="${src}" class="w-full h-full object-contain" />` : `<span class="text-[9px] text-amber-400 italic font-semibold">Belum ada aset TTD (Pakai Teks Nama)</span>`;
+            } else {
+                if (previewLabel) previewLabel.innerText = 'Preview Aset Paraf';
+                const src = currentUser.parafPng;
+                singleBox.innerHTML = src ? `<img src="${src}" class="w-full h-full object-contain" />` : `<span class="text-[9px] text-sub italic">Belum ada aset Paraf</span>`;
+            }
+        }
+
+        function openPhotoZoomModal() {
+            const container = document.getElementById('zoomed-photo-container');
+            if(container && currentUser) {
+                container.innerHTML = currentUser.avatarPng 
+                    ? `<img src="${currentUser.avatarPng}" class="w-full h-full object-cover" />` 
+                    : (currentUser.init || 'SA');
+            }
+            document.getElementById('photo-zoom-modal').classList.remove('hidden');
+        }
+        function closePhotoZoomModal() { document.getElementById('photo-zoom-modal').classList.add('hidden'); }
+        
+        async function handleLogout() {
+            recordLog(`Logout dari sistem: ${currentUser ? currentUser.fullname : 'Unknown'}`);
+            try { await auth.signOut(); } catch (err) { console.error('Firebase Auth signOut gagal:', err); }
+            stopConversationListener();
+            if (chatPrivateNotifUnsub) { chatPrivateNotifUnsub(); chatPrivateNotifUnsub = null; }
+            if (chatBroadcastNotifUnsub) { chatBroadcastNotifUnsub(); chatBroadcastNotifUnsub = null; }
+            currentUser = null;
+            updateKiraAccessMode(true);
+            localStorage.removeItem('kdp_current_user');
+            localStorage.removeItem('kdp_active_menu');
+            document.getElementById('app-dashboard').classList.add('hidden');
+            document.getElementById('auth-screen').classList.remove('hidden');
+        }
+
+        function showToast(msg, dur = 3000) { 
+            const t = document.getElementById('app-toast'); 
+            t.textContent = msg; 
+            t.classList.add('toast-visible'); 
+            setTimeout(() => t.classList.remove('toast-visible'), dur); 
+        }
+        window.alert = (m) => showToast(m, 3000);
+
+        function switchMenu(menuId) {
+            if (menuId === 'admin-panel' && !['administrator', 'kabag', 'pimpinan'].includes(currentUser.position)) {
+                alert('Akses ditolak! Menu ini khusus Administrator, KDP Kabag, dan Pimpinan MR.');
+                return;
+            }
+
+            currentActiveMenu = menuId;
+            saveStateToCloud();
+
+            const pageTitleEl = document.getElementById('page-title');
+            if (pageTitleEl) {
+                pageTitleEl.innerText = menuTitlesMap[menuId] || 'Sistem Otorisasi Dokumen';
+            }
+
+            ['ringkasan', 'dokumen-saya', 'menunggu-saya', 'admin-panel', 'tambah-user', 'edit-user', 'utilities', 'utility-merge', 'utility-organize-pages', 'kontak', 'profil', 'pengaturan'].forEach(m => {
+                const el = document.getElementById(`section-${m}`);
+                if (el) el.classList.add('hidden');
+            });
+            document.getElementById(`section-${menuId}`).classList.remove('hidden');
+
+            document.querySelectorAll('.sidebar-btn').forEach(btn => {
+                btn.classList.remove('active-menu-btn');
+            });
+
+            const activeBtn = document.getElementById(`menu-${menuId}`);
+            if (activeBtn) activeBtn.classList.add('active-menu-btn');
+
+            if (window.innerWidth <= 767) toggleMobileSidebar(false);
+
+            if (menuId === 'ringkasan') { updateStatistics(); renderSummaryTable(); }
+            if (menuId === 'dokumen-saya') renderMyDocuments();
+            if (menuId === 'menunggu-saya') renderPendingDocuments();
+            if (menuId === 'admin-panel') renderAdminUsersTable();
+            if (menuId === 'kontak') renderContactsDirectory();
+            if (menuId === 'profil') renderProfileForm();
+            if (menuId === 'utility-merge') resetMergeUtility();
+            if (menuId === 'utility-organize-pages') resetOrganizeUtility();
+        }
+
+        function resetMergeUtility() {
+            utilityMergeFilesArray = [];
+            utilityLastMergedBlob = null;
+            document.getElementById('utility-merge-initial-view').classList.remove('hidden');
+            document.getElementById('utility-merge-workspace').classList.add('hidden');
+            document.getElementById('utility-merge-success-view').classList.add('hidden');
+            document.getElementById('utility-merge-files').value = '';
+        }
+
+        function handleUtilityMergeDrop(e) {
+            e.preventDefault();
+            if (e.dataTransfer.files && e.dataTransfer.files.length) {
+                addFilesToMerge(Array.from(e.dataTransfer.files));
+            }
+        }
+
+        function handleUtilityMergeFileSelect(input) {
+            if (input.files && input.files.length) {
+                addFilesToMerge(Array.from(input.files));
+            }
+        }
+
+        function handleUtilityMergeAddMore(input) {
+            if (input.files && input.files.length) {
+                addFilesToMerge(Array.from(input.files));
+                input.value = '';
+            }
+        }
+
+        async function addFilesToMerge(newFiles) {
+            for (let f of newFiles) {
+                if (f.type === 'application/pdf') {
+                    utilityMergeFilesArray.push(f);
+                }
+            }
+            if (utilityMergeFilesArray.length > 0) {
+                document.getElementById('utility-merge-initial-view').classList.add('hidden');
+                document.getElementById('utility-merge-success-view').classList.add('hidden');
+                document.getElementById('utility-merge-workspace').classList.remove('hidden');
+                await renderMergeCards();
+            }
+        }
+
+        async function renderMergeCards() {
+            const container = document.getElementById('utility-merge-cards-container');
+            container.innerHTML = '';
+
+            for (let i = 0; i < utilityMergeFilesArray.length; i++) {
+                const file = utilityMergeFilesArray[i];
+                const card = document.createElement('div');
+                card.className = 'bg-input border border-panel rounded-xl p-3 flex flex-col items-center relative shadow group cursor-grab active:cursor-grabbing hover:border-premium-gold transition';
+                card.setAttribute('draggable', 'true');
+                card.setAttribute('data-index', i);
+
+                card.addEventListener('dragstart', (e) => {
+                    draggedCardIndex = i;
+                    e.dataTransfer.effectAllowed = 'move';
+                    card.classList.add('opacity-50', 'border-dashed');
+                });
+                card.addEventListener('dragend', () => {
+                    card.classList.remove('opacity-50', 'border-dashed');
+                    draggedCardIndex = null;
+                });
+                card.addEventListener('dragover', (e) => {
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = 'move';
+                });
+                card.addEventListener('drop', (e) => {
+                    e.preventDefault();
+                    if (draggedCardIndex !== null && draggedCardIndex !== i) {
+                        const movedItem = utilityMergeFilesArray.splice(draggedCardIndex, 1)[0];
+                        utilityMergeFilesArray.splice(i, 0, movedItem);
+                        renderMergeCards();
+                        showToast('Urutan file berhasil diperbarui.', 1500);
+                    }
+                });
+                
+                const canvasId = `merge-thumb-${i}-${Date.now()}`;
+                card.innerHTML = `
+                    <div class="absolute top-2 left-2 bg-premium-gold text-regal-black w-6 h-6 rounded-full flex items-center justify-center font-bold text-[10px] z-10">${i+1}</div>
+                    <button type="button" onclick="removeMergeFile(${i})" class="absolute top-2 right-2 bg-panel text-rose-400 border border-panel w-6 h-6 rounded-full flex items-center justify-center font-bold text-[10px] z-10 hover:bg-rose-950 hover:text-rose-200" title="Hapus">✕</button>
+                    <div class="w-full h-32 bg-panel rounded-lg border border-panel mb-2 flex items-center justify-center overflow-hidden relative pointer-events-none">
+                        <canvas id="${canvasId}" class="max-h-full max-w-full object-contain"></canvas>
+                    </div>
+                    <p class="text-[11px] font-medium text-heading truncate w-full text-center" title="${file.name}">${file.name}</p>
+                    <div class="flex items-center gap-1 mt-2">
+                        ${i > 0 ? `<button type="button" onclick="moveMergeFile(${i}, -1)" class="px-2 py-1 bg-panel border border-panel rounded text-[10px] font-bold text-sub hover:text-heading">◀ Geser</button>` : ''}
+                        ${i < utilityMergeFilesArray.length - 1 ? `<button type="button" onclick="moveMergeFile(${i}, 1)" class="px-2 py-1 bg-panel border border-panel rounded text-[10px] font-bold text-sub hover:text-heading">Geser ▶</button>` : ''}
+                    </div>
+                `;
+                container.appendChild(card);
+
+                try {
+                    const buf = await readFileAsArrayBuffer(file);
+                    const pdfDoc = await pdfjsLib.getDocument({ data: buf }).promise;
+                    const page = await pdfDoc.getPage(1);
+                    const viewport = page.getViewport({ scale: 0.25 });
+                    const canvas = document.getElementById(canvasId);
+                    if (canvas) {
+                        canvas.width = viewport.width;
+                        canvas.height = viewport.height;
+                        await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+                    }
+                } catch(e) {
+                    console.error('Gagal render thumbnail PDF:', e);
+                }
+            }
+        }
+
+        function removeMergeFile(index) {
+            utilityMergeFilesArray.splice(index, 1);
+            if (utilityMergeFilesArray.length === 0) {
+                resetMergeUtility();
+            } else {
+                renderMergeCards();
+            }
+        }
+
+        function moveMergeFile(index, direction) {
+            const newIndex = index + direction;
+            if (newIndex < 0 || newIndex >= utilityMergeFilesArray.length) return;
+            const temp = utilityMergeFilesArray[index];
+            utilityMergeFilesArray[index] = utilityMergeFilesArray[newIndex];
+            utilityMergeFilesArray[newIndex] = temp;
+            renderMergeCards();
+        }
+
+        async function processMergePDFs() {
+            if (!utilityMergeFilesArray.length) { alert('Pilih minimal 1 file PDF!'); return; }
+            try {
+                showToast('Sedang menggabungkan PDF...', 2000);
+                const mergedPdf = await PDFLib.PDFDocument.create();
+                for (let file of utilityMergeFilesArray) {
+                    const arrayBuffer = await readFileAsArrayBuffer(file);
+                    const pdf = await PDFLib.PDFDocument.load(arrayBuffer);
+                    const copiedPages = await mergedPdf.copyPages(pdf, pdf.getPageIndices());
+                    copiedPages.forEach(page => mergedPdf.addPage(page));
+                }
+                const mergedPdfBytes = await mergedPdf.save();
+                utilityLastMergedBlob = new Blob([mergedPdfBytes], { type: 'application/pdf' });
+                
+                document.getElementById('utility-merge-workspace').classList.add('hidden');
+                document.getElementById('utility-merge-success-view').classList.remove('hidden');
+                showToast('PDF berhasil digabungkan!');
+            } catch(err) {
+                console.error(err);
+                alert('Gagal menggabungkan PDF: ' + err.message);
+            }
+        }
+
+        function downloadLastMergedPDF() {
+            if (!utilityLastMergedBlob) return;
+            downloadBlob(utilityLastMergedBlob, 'merged-document.pdf');
+        }
+
+        function resetOrganizeUtility() {
+            utilityOrgSourceFile = null;
+            utilityOrgPagesArray = [];
+            utilityLastOrganizedBlob = null;
+            document.getElementById('utility-org-initial-view').classList.remove('hidden');
+            document.getElementById('utility-org-workspace').classList.add('hidden');
+            document.getElementById('utility-org-success-view').classList.add('hidden');
+            document.getElementById('utility-org-file').value = '';
+        }
+
+        function handleUtilityOrgDrop(e) {
+            e.preventDefault();
+            if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+                loadOrganizeFile(e.dataTransfer.files[0]);
+            }
+        }
+
+        function handleUtilityOrgFileSelect(input) {
+            if (input.files && input.files[0]) {
+                loadOrganizeFile(input.files[0]);
+            }
+        }
+
+        async function loadOrganizeFile(file) {
+            if (file.type !== 'application/pdf') {
+                alert('Harap pilih file berformat PDF!');
+                return;
+            }
+            utilityOrgSourceFile = file;
+            try {
+                showToast('Memuat halaman PDF...', 1500);
+                const arrayBuffer = await readFileAsArrayBuffer(file);
+                const pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+                
+                utilityOrgPagesArray = [];
+                for (let i = 1; i <= pdfDoc.numPages; i++) {
+                    utilityOrgPagesArray.push({
+                        originalIndex: i - 1,
+                        id: `org-page-${i}-${Date.now()}`
+                    });
+                }
+
+                document.getElementById('utility-org-initial-view').classList.add('hidden');
+                document.getElementById('utility-org-success-view').classList.add('hidden');
+                document.getElementById('utility-org-workspace').classList.remove('hidden');
+                await renderOrganizeThumbnails();
+            } catch(e) {
+                console.error(e);
+                alert('Gagal membaca file PDF.');
+            }
+        }
+
+        async function renderOrganizeThumbnails() {
+            const container = document.getElementById('utility-org-thumbnails-container');
+            container.innerHTML = '';
+
+            if (!utilityOrgSourceFile || utilityOrgPagesArray.length === 0) {
+                container.innerHTML = `<p class="text-xs text-rose-400 col-span-full text-center py-4">Semua halaman telah dihapus atau file kosong.</p>`;
+                return;
+            }
+
+            const arrayBuffer = await readFileAsArrayBuffer(utilityOrgSourceFile);
+            const pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+
+            for (let i = 0; i < utilityOrgPagesArray.length; i++) {
+                const item = utilityOrgPagesArray[i];
+                const card = document.createElement('div');
+                card.className = 'bg-input border border-panel rounded-xl p-3 flex flex-col items-center relative shadow group cursor-grab active:cursor-grabbing hover:border-premium-gold transition';
+                card.setAttribute('draggable', 'true');
+                card.setAttribute('data-index', i);
+
+                card.addEventListener('dragstart', (e) => {
+                    draggedThumbnailIndex = i;
+                    e.dataTransfer.effectAllowed = 'move';
+                    card.classList.add('opacity-50', 'border-dashed');
+                });
+                card.addEventListener('dragend', () => {
+                    card.classList.remove('opacity-50', 'border-dashed');
+                    draggedThumbnailIndex = null;
+                });
+                card.addEventListener('dragover', (e) => {
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = 'move';
+                });
+                card.addEventListener('drop', (e) => {
+                    e.preventDefault();
+                    if (draggedThumbnailIndex !== null && draggedThumbnailIndex !== i) {
+                        const movedItem = utilityOrgPagesArray.splice(draggedThumbnailIndex, 1)[0];
+                        utilityOrgPagesArray.splice(i, 0, movedItem);
+                        renderOrganizeThumbnails();
+                        showToast('Urutan halaman diperbarui.', 1500);
+                    }
+                });
+
+                const canvasId = `org-thumb-canvas-${item.id}`;
+                card.innerHTML = `
+                    <div class="absolute top-2 left-2 bg-premium-gold text-regal-black w-6 h-6 rounded-full flex items-center justify-center font-bold text-[10px] z-10">${i+1}</div>
+                    <button type="button" onclick="removeOrganizePage(${i})" class="absolute top-2 right-2 bg-rose-700 hover:bg-rose-600 text-white w-6 h-6 rounded-full flex items-center justify-center font-bold text-[11px] z-10 shadow" title="Hapus Halaman Ini">✕</button>
+                    <div class="w-full h-32 bg-panel rounded-lg border border-panel mb-2 flex items-center justify-center overflow-hidden relative pointer-events-none">
+                        <canvas id="${canvasId}" class="max-h-full max-w-full object-contain"></canvas>
+                    </div>
+                    <p class="text-[11px] font-medium text-heading">Halaman Asli: ${item.originalIndex + 1}</p>
+                `;
+                container.appendChild(card);
+
+                try {
+                    const page = await pdfDoc.getPage(item.originalIndex + 1);
+                    const viewport = page.getViewport({ scale: 0.25 });
+                    const canvas = document.getElementById(canvasId);
+                    if (canvas) {
+                        canvas.width = viewport.width;
+                        canvas.height = viewport.height;
+                        await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+                    }
+                } catch(e) {
+                    console.error('Gagal render thumbnail halaman:', e);
+                }
+            }
+        }
+
+        function removeOrganizePage(index) {
+            if (utilityOrgPagesArray.length <= 1) {
+                alert('Dokumen minimal harus menyisakan 1 halaman!');
+                return;
+            }
+            utilityOrgPagesArray.splice(index, 1);
+            renderOrganizeThumbnails();
+            showToast('Halaman berhasil dihapus.', 1500);
+        }
+
+        async function processOrganizeAndSavePDF() {
+            if (!utilityOrgSourceFile || utilityOrgPagesArray.length === 0) { alert('Tidak ada halaman tersisa untuk disimpan!'); return; }
+            try {
+                showToast('Memproses dokumen baru...', 2000);
+                const arrayBuffer = await readFileAsArrayBuffer(utilityOrgSourceFile);
+                const pdfDoc = await PDFLib.PDFDocument.load(arrayBuffer);
+                const newPdf = await PDFLib.PDFDocument.create();
+                
+                const indicesToCopy = utilityOrgPagesArray.map(item => item.originalIndex);
+                const copiedPages = await newPdf.copyPages(pdfDoc, indicesToCopy);
+                copiedPages.forEach(p => newPdf.addPage(p));
+
+                const newBytes = await newPdf.save();
+                utilityLastOrganizedBlob = new Blob([newBytes], { type: 'application/pdf' });
+
+                document.getElementById('utility-org-workspace').classList.add('hidden');
+                document.getElementById('utility-org-success-view').classList.remove('hidden');
+                showToast('Halaman PDF berhasil diatur ulang!');
+            } catch(e) {
+                console.error(e);
+                alert('Gagal memproses PDF: ' + e.message);
+            }
+        }
+
+        function downloadLastOrganizedPDF() {
+            if (!utilityLastOrganizedBlob) return;
+            downloadBlob(utilityLastOrganizedBlob, 'organized-document.pdf');
+        }
+
+        let currentProceedSource = 'merge';
+
+        function openProceedMergedModal(source) {
+            currentProceedSource = source;
+            const blobToCheck = source === 'merge' ? utilityLastMergedBlob : utilityLastOrganizedBlob;
+            if (!blobToCheck) return;
+
+            const defaultTitle = source === 'merge' ? `Merged Document (${new Date().toLocaleDateString()})` : `Organized Document (${new Date().toLocaleDateString()})`;
+            document.getElementById('proceed-doc-title').value = defaultTitle;
+            document.getElementById('proceed-doc-type').value = 'kdp';
+            document.getElementById('proceed-merged-modal').classList.remove('hidden');
+        }
+
+        function closeProceedMergedModal() {
+            document.getElementById('proceed-merged-modal').classList.add('hidden');
+        }
+
+        async function confirmProceedMergedPDF() {
+            const blobToUse = currentProceedSource === 'merge' ? utilityLastMergedBlob : utilityLastOrganizedBlob;
+            if (!blobToUse) {
+                alert('File PDF hasil proses tidak ditemukan. Silakan ulangi proses.');
+                return;
+            }
+            if (!currentUser || !auth.currentUser) {
+                alert('Sesi login tidak tersedia. Silakan login kembali.');
+                return;
+            }
+
+            const customTitle = document.getElementById('proceed-doc-title').value.trim();
+            const docTitle = customTitle !== '' ? customTitle : `Dokumen Utilitas (${new Date().toLocaleDateString('id-ID')})`;
+            const docType = document.getElementById('proceed-doc-type').value;
+            const confirmButton = document.querySelector('#proceed-merged-modal button[onclick="confirmProceedMergedPDF()"]');
+            const originalButtonHTML = confirmButton ? confirmButton.innerHTML : '';
+            let uploadedAsset = null;
+            let firestoreSaved = false;
+
+            if (confirmButton) {
+                confirmButton.disabled = true;
+                confirmButton.innerHTML = '⏳ Mengunggah & menyimpan...';
+            }
+
+            try {
+                showToast('Menyiapkan PDF final untuk disimpan...', 2500);
+
+                // Buat File dari hasil akhir (gabungan atau susunan halaman).
+                // File final ini yang menjadi dasar penentuan provider storage.
+                const safeBaseName = docTitle
+                    .replace(/[\\/:*?"<>|]+/g, '-')
+                    .replace(/\s+/g, ' ')
+                    .trim()
+                    .slice(0, 100) || 'Dokumen-Utilitas';
+                const finalFile = new File(
+                    [blobToUse],
+                    `${safeBaseName}.pdf`,
+                    { type: 'application/pdf', lastModified: Date.now() }
+                );
+
+                if (finalFile.size < 5) throw new Error('File PDF final kosong atau tidak valid.');
+
+                showToast(`Mengunggah PDF final (${(finalFile.size / 1024 / 1024).toFixed(2)} MB)...`, 4000);
+                const routingResult = await handleFileRouting(finalFile, 'documents');
+
+                uploadedAsset = {
+                    storageType: routingResult.storageType,
+                    storagePath: routingResult.storagePath || null,
+                    storageBucket: routingResult.storageBucket || null,
+                    publicId: routingResult.storagePublicId || null,
+                    url: routingResult.fileData
+                };
+
+                let initialStatus = 'Tahap 1: Menunggu 2 Staff KDP TTD';
+                if (docType === 'kasir') initialStatus = 'Tahap 1: Menunggu TTD Kasir';
+                else if (docType === 'admkdp') initialStatus = 'Tahap 1: Menunggu TTD Admin KDP';
+                else if (docType === 'pihak_ketiga') initialStatus = 'Tahap 1: Menunggu 2 Staff KDP TTD';
+                else if (docType === 'lain_lain') initialStatus = 'Menunggu Review Staff KDP (Opsional) atau KDP Kabag';
+
+                const nowTime = Date.now();
+                const uniqueDocId = `${nowTime}_${Math.random().toString(36).slice(2, 11)}`;
+                const newDoc = {
+                    id: uniqueDocId,
+                    title: docTitle,
+                    docType: docType,
+                    uploader: `${currentUser.fullname || currentUser.username} (${currentUser.roleTitle || roleTitlesMap[currentUser.position] || 'User'})`,
+                    status: initialStatus,
+                    step: 1,
+                    fileData: routingResult.fileData,
+                    storageType: routingResult.storageType,
+                    storagePath: routingResult.storagePath || null,
+                    storageBucket: routingResult.storageBucket || null,
+                    storagePublicId: routingResult.storagePublicId || null,
+                    fileSizeMB: routingResult.sizeMB,
+                    fileSizeBytes: routingResult.sizeBytes,
+                    sourceUtility: currentProceedSource === 'merge' ? 'merge_pdf' : 'organize_pdf',
+                    comments: [],
+                    approvedUsers: [],
+                    approvedStaffList: [],
+                    kabagHasVerified: false,
+                    isCompleted: false,
+                    createdAt: nowTime,
+                    lastUpdated: nowTime
+                };
+
+                // Urutan wajib: file cloud berhasil diunggah, baru metadata dicatat di Firestore.
+                await db.collection('documents').doc(uniqueDocId).set(newDoc);
+                firestoreSaved = true;
+
+                // Update UI lokal setelah Firestore mengonfirmasi penyimpanan.
+                documents = [newDoc, ...(documents || []).filter(item => item.id !== uniqueDocId)];
+                documents.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+                cacheDocumentsLocally();
+
+                await recordLog(`Mengajukan dokumen utilitas baru (${routingResult.storageType.toUpperCase()}): ${docTitle}`);
+                notifyNextApprovers(docType, 1, docTitle, uniqueDocId);
+
+                closeProceedMergedModal();
+                updateStatistics();
+                switchMenu('dokumen-saya');
+                showToast(`Dokumen berhasil disimpan di ${routingResult.storageType.toUpperCase()} dan diteruskan ke approval!`, 5000);
+            } catch (e) {
+                console.error('Gagal menyimpan hasil PDF utilitas ke approval:', e);
+
+                // Jika upload berhasil tetapi pencatatan Firestore gagal, bersihkan file yatim.
+                if (uploadedAsset && !firestoreSaved) {
+                    try {
+                        await deleteCloudAsset(uploadedAsset);
+                    } catch (cleanupError) {
+                        console.error('File hasil upload gagal dibersihkan setelah penyimpanan Firestore gagal:', cleanupError);
+                        alert(
+                            `Dokumen gagal dicatat ke database. File sudah terunggah tetapi penghapusan otomatis gagal. ` +
+                            `Mohon hubungi administrator untuk pemeriksaan. Detail: ${e.message}`
+                        );
+                        return;
+                    }
+                }
+
+                alert(`Gagal meneruskan PDF ke approval: ${e.message || e}`);
+            } finally {
+                if (confirmButton) {
+                    confirmButton.disabled = false;
+                    confirmButton.innerHTML = originalButtonHTML;
+                }
+            }
+        }
+
+        function downloadBlob(blob, filename) {
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url; a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        function toggleEditMode(sectionKey) {
+            const container = document.getElementById(`container-edit-${sectionKey}`);
+            const btn = document.getElementById(`btn-toggle-${sectionKey}`);
+            if (!container || !btn) return;
+
+            const isHidden = container.classList.contains('hidden');
+            if (isHidden) {
+                container.classList.remove('hidden');
+                btn.innerText = 'Batal';
+                btn.classList.add('bg-rose-950', 'text-rose-300', 'border-rose-800');
+            } else {
+                container.classList.add('hidden');
+                btn.innerText = 'Ganti';
+                btn.classList.remove('bg-rose-950', 'text-rose-300', 'border-rose-800');
+            }
+        }
+
+        function renderProfileForm() {
+            if (!currentUser) return;
+            document.getElementById('profile-edit-fullname').value = currentUser.fullname || '';
+            document.getElementById('profile-edit-position').value = currentUser.position || 'staff_kdp';
+            document.getElementById('profile-edit-ink-color').value = currentUser.inkColor || '#2563eb';
+            document.getElementById('profile-ink-code-label').innerText = currentUser.inkColor || '#2563eb';
+            document.getElementById('profile-ink-preview-circle').style.backgroundColor = currentUser.inkColor || '#2563eb';
+            document.getElementById('profile-edit-password').value = '';
+            
+            ['name-role', 'avatar', 'ink', 'paraf', 'ttd', 'password'].forEach(key => {
+                const c = document.getElementById(`container-edit-${key}`);
+                const b = document.getElementById(`btn-toggle-${key}`);
+                if(c) c.classList.add('hidden');
+                if(b) {
+                    b.innerText = 'Ganti';
+                    b.classList.remove('bg-rose-950', 'text-rose-300', 'border-rose-800');
+                }
+            });
+
+            document.getElementById('profile-active-name-role').innerText = `${currentUser.fullname} — (${currentUser.roleTitle || roleTitlesMap[currentUser.position] || 'User'})`;
+            const roleBadge = document.getElementById('profile-role-badge');
+            if (roleBadge) roleBadge.innerText = currentUser.roleTitle || roleTitlesMap[currentUser.position] || 'User';
+
+            const avatarBox = document.querySelector('.profile-preview-avatar-box');
+            if (avatarBox) {
+                avatarBox.innerHTML = currentUser.avatarPng 
+                    ? `<img src="${currentUser.avatarPng}" class="w-full h-full object-cover" />` 
+                    : (currentUser.init || 'SA');
+            }
+
+            const parafBox = document.getElementById('profile-paraf-preview-box');
+            if (parafBox) {
+                parafBox.innerHTML = currentUser.parafPng 
+                    ? `<img src="${currentUser.parafPng}" class="max-h-full object-contain" />` 
+                    : `<span class="text-[9px] text-sub italic">Kosong</span>`;
+            }
+
+            const ttdBox = document.getElementById('profile-ttd-preview-box');
+            if (ttdBox) {
+                ttdBox.innerHTML = currentUser.ttdPng 
+                    ? `<img src="${currentUser.ttdPng}" class="max-h-full object-contain" />` 
+                    : `<span class="text-[9px] text-sub italic">Kosong</span>`;
+            }
+        }
+
+        async function saveBasicProfileChanges() {
+            if (!currentUser) return;
+            const fullname = document.getElementById('profile-edit-fullname').value.trim();
+            const position = document.getElementById('profile-edit-position').value;
+            if (!fullname) { alert('Nama lengkap wajib diisi!'); return; }
+
+            currentUser.fullname = fullname;
+            currentUser.position = position;
+            currentUser.roleTitle = roleTitlesMap[position] || position;
+            currentUser.init = fullname.split(' ').map(n=>n[0]).join('').toUpperCase().substring(0,2);
+
+            delete currentUser.password;
+            usersDatabase[currentUser.username] = currentUser;
+            await db.collection('users').doc(currentUser.username).set({
+                ...currentUser, updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+            }, { merge: true });
+            await saveStateToCloud();
+            recordLog(`Memperbarui profil nama/jabatan: ${fullname}`);
+            updateUIUserDisplay();
+            renderProfileForm();
+            showToast('Nama dan Jabatan berhasil diperbarui!');
+        }
+let isAIChatOpen = false;
+
+// Fungsi sendUserMessage ditangani oleh modul chat real-time di bagian akhir dokumen.
+        async function migrateLegacyProfileImageField(fieldName, category) {
+            const value = currentUser && currentUser[fieldName];
+            if (typeof value !== 'string' || !value.startsWith('data:image/')) return;
+            const response = await fetch(value);
+            const blob = await response.blob();
+            const extension = blob.type.includes('png') ? 'png' : 'jpg';
+            let file = new File([blob], `${fieldName}.${extension}`, { type: blob.type || 'image/jpeg' });
+            if (fieldName === 'avatarPng') file = await compressAvatarImage(file);
+            const result = await handleFileRouting(file, category);
+            setProfileAssetMetadata(currentUser, fieldName, result);
+        }
+
+        async function uploadSpecificAsset(type) {
+            if (!currentUser) {
+                alert('Sesi pengguna tidak ditemukan. Silakan login kembali.');
+                return;
+            }
+
+            const button = document.querySelector(`button[onclick="uploadSpecificAsset('${type}')"]`);
+            const originalText = button ? button.textContent : 'Simpan';
+            const setStatus = message => { if (button) button.textContent = message; };
+            const withTimeout = (promise, ms, label) => Promise.race([
+                promise,
+                new Promise((_, reject) => setTimeout(
+                    () => reject(new Error(`${label} melebihi ${Math.round(ms / 1000)} detik.`)), ms
+                ))
+            ]);
+
+            if (button) { button.disabled = true; setStatus('Menyiapkan...'); }
+
+            try {
+                let assetResult = null;
+                if (type === 'avatar' || type === 'paraf' || type === 'ttd') {
+                    const inputId = type === 'avatar' ? 'profile-avatar-file' :
+                                    type === 'paraf' ? 'profile-paraf-file' : 'profile-ttd-file';
+                    const input = document.getElementById(inputId);
+                    const originalFile = input?.files?.[0];
+                    if (!originalFile) throw new Error('Pilih file gambar terlebih dahulu.');
+                    if (!originalFile.type.startsWith('image/')) throw new Error('File harus berupa gambar.');
+
+                    let fileToUpload = originalFile;
+                    if (type === 'avatar') {
+                        setStatus('Mengompres foto...');
+                        fileToUpload = await withTimeout(compressAvatarImage(originalFile), 20000, 'Kompresi avatar');
+                    }
+
+                    const category = type === 'avatar' ? 'profile/avatars' :
+                                     type === 'paraf' ? 'profile/paraf' : 'profile/ttd';
+
+                    setStatus(`Mengunggah ${(fileToUpload.size / 1048576).toFixed(2)} MB...`);
+                    assetResult = await withTimeout(handleFileRouting(fileToUpload, category), 60000, 'Upload aset profil');
+
+                    // Simpan URL dan seluruh metadata provider di Firestore, bukan Base64.
+                    const fieldName = type === 'avatar' ? 'avatarPng' : type === 'paraf' ? 'parafPng' : 'ttdPng';
+                    const oldProfileAsset = getProfileAsset(currentUser, fieldName);
+                    setProfileAssetMetadata(currentUser, fieldName, assetResult);
+                    assetResult._replacedAsset = oldProfileAsset;
+                } else if (type === 'ink') {
+                    currentUser.inkColor = document.getElementById('profile-edit-ink-color').value;
+                } else {
+                    throw new Error('Jenis aset profil tidak dikenal.');
+                }
+
+                // Migrasikan aset Base64 lama agar dokumen Firestore hanya menyimpan URL + metadata.
+                setStatus('Memeriksa aset profil lama...');
+                await migrateLegacyProfileImageField('avatarPng', 'profile/avatars');
+                await migrateLegacyProfileImageField('parafPng', 'profile/paraf');
+                await migrateLegacyProfileImageField('ttdPng', 'profile/ttd');
+
+                delete currentUser.password;
+                usersDatabase[currentUser.username] = currentUser;
+                const userRecord = JSON.parse(JSON.stringify(currentUser));
+
+                setStatus('Menyimpan metadata akun...');
+                await withTimeout(
+                    db.collection('users').doc(currentUser.username).set({
+                        ...userRecord,
+                        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                    }, { merge: true }),
+                    15000,
+                    'Penyimpanan metadata akun'
+                );
+
+                // Setelah metadata baru tersimpan, hapus objek lama bila lokasinya diketahui.
+                if (assetResult?._replacedAsset) {
+                    try { await deleteReplacedProfileAsset(assetResult._replacedAsset, assetResult.fileData); }
+                    catch (cleanupErr) { console.warn('Aset profil lama belum berhasil dihapus:', cleanupErr); }
+                }
+
+                // Hanya cache metadata+URL; file fisik tidak dimasukkan ke Firestore/localStorage.
+                localStorage.setItem('kdp_users_db', JSON.stringify(usersDatabase));
+                localStorage.setItem('kdp_current_user', currentUser.username);
+
+                recordLog(`Memperbarui aset profil (${type})`);
+                updateUIUserDisplay();
+                renderProfileForm();
+                if (type !== 'ink') {
+                    const inputId = type === 'avatar' ? 'profile-avatar-file' :
+                                    type === 'paraf' ? 'profile-paraf-file' : 'profile-ttd-file';
+                    const input = document.getElementById(inputId);
+                    if (input) input.value = '';
+                }
+
+                const providerLabel = assetResult
+                    ? `${assetResult.storageType} (${assetResult.sizeMB} MB)`
+                    : 'Firestore metadata';
+                showToast(`Berhasil disimpan: ${providerLabel}`);
+            } catch (err) {
+                console.error(`Gagal menyimpan aset profil (${type}):`, err);
+                alert(`Gagal menyimpan perubahan profil: ${err.code ? err.code + ' — ' : ''}${err.message || err}`);
+            } finally {
+                if (button) { button.disabled = false; button.textContent = originalText; }
+            }
+        }
+
+        async function saveNewPassword() {
+            if (!currentUser || !auth.currentUser) { alert('Sesi Firebase Authentication tidak ditemukan. Silakan login kembali.'); return; }
+            const newPassword = document.getElementById('profile-edit-password').value;
+            if (!newPassword || newPassword.length < 8) { alert('Masukkan sandi baru minimal 8 karakter!'); return; }
+            try {
+                await auth.currentUser.updatePassword(newPassword);
+                recordLog('Memperbarui kata sandi melalui Firebase Authentication');
+                document.getElementById('profile-edit-password').value = '';
+                showToast('Kata sandi Firebase Authentication berhasil diperbarui!');
+            } catch (err) {
+                console.error('Gagal memperbarui password Auth:', err);
+                if (err.code === 'auth/requires-recent-login') {
+                    alert('Demi keamanan, silakan logout dan login kembali sebelum mengganti password.');
+                } else {
+                    alert('Gagal memperbarui password: ' + (err.message || err));
+                }
+            }
+        }
+
+        function openAddUserScreen() {
+            document.getElementById('new-user-fullname').value = '';
+            document.getElementById('new-user-username').value = '';
+            document.getElementById('new-user-email').value = '';
+            document.getElementById('new-user-password').value = '';
+            document.getElementById('new-user-confirm-password').value = '';
+            document.getElementById('new-user-ink-color').value = '#2563eb';
+            document.getElementById('new-user-paraf-file').value = '';
+            document.getElementById('new-user-ttd-file').value = '';
+            switchMenu('tambah-user');
+        }
+
+        async function handleAdminCreateUser() {
+            const fullname = document.getElementById('new-user-fullname').value.trim();
+            const email = document.getElementById('new-user-email').value.trim().toLowerCase();
+            const username = document.getElementById('new-user-username').value.trim().toLowerCase();
+            const position = document.getElementById('new-user-position').value;
+            const inkColor = document.getElementById('new-user-ink-color').value;
+            const password = document.getElementById('new-user-password').value;
+            const confirmPass = document.getElementById('new-user-confirm-password').value;
+
+            if (!fullname || !email || !username || !password) { alert('Nama, email, username, dan password wajib diisi.'); return; }
+            if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { alert('Format email tidak valid.'); return; }
+            if (password !== confirmPass || password.length < 8) { alert('Password minimal 8 karakter dan harus sama dengan konfirmasi.'); return; }
+            if (!/^[a-z0-9._-]{3,32}$/.test(username)) { alert('Format username tidak valid.'); return; }
+
+            const userRef = db.collection('users').doc(username);
+            const existingCloudUser = await userRef.get();
+            if (existingCloudUser.exists || usersDatabase[username]) { alert('Username sudah terdaftar!'); return; }
+            const emailCheck = await db.collection('users').where('email', '==', email).limit(1).get();
+            if (!emailCheck.empty) { alert('Email sudah digunakan.'); return; }
+
+            let secondaryApp;
+            try {
+                // App sekunder mencegah sesi Administrator tergantikan saat membuat akun baru.
+                const appName = 'KDP-User-Creation-' + Date.now();
+                secondaryApp = firebase.initializeApp(firebaseConfig, appName);
+                const secondaryAuth = secondaryApp.auth();
+                const credential = await secondaryAuth.createUserWithEmailAndPassword(email, password);
+
+                const parafFile = document.getElementById('new-user-paraf-file').files[0];
+                const ttdFile = document.getElementById('new-user-ttd-file').files[0];
+                const parafAsset = parafFile ? await handleFileRouting(parafFile, 'profile/paraf') : null;
+                const ttdAsset = ttdFile ? await handleFileRouting(ttdFile, 'profile/ttd') : null;
+
+                const newUser = {
+                    uid: credential.user.uid, email, fullname, username, position,
+                    roleTitle: roleTitlesMap[position] || position,
+                    inkColor, init: fullname.split(' ').map(n=>n[0]).join('').toUpperCase().substring(0,2),
+                    avatarPng: null,
+                    parafPng: parafAsset?.fileData || null,
+                    parafStorageType: parafAsset?.storageType || null,
+                    parafStoragePath: parafAsset?.storagePath || null,
+                    parafStorageBucket: parafAsset?.storageBucket || null,
+                    parafStoragePublicId: parafAsset?.storagePublicId || null,
+                    parafSizeBytes: parafAsset?.sizeBytes || null,
+                    ttdPng: ttdAsset?.fileData || null,
+                    ttdStorageType: ttdAsset?.storageType || null,
+                    ttdStoragePath: ttdAsset?.storagePath || null,
+                    ttdStorageBucket: ttdAsset?.storageBucket || null,
+                    ttdStoragePublicId: ttdAsset?.storagePublicId || null,
+                    ttdSizeBytes: ttdAsset?.sizeBytes || null,
+                    createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                };
+                await userRef.set(newUser);
+                usersDatabase[username] = { ...newUser, createdAt: new Date().toISOString() };
+                await saveStateToCloud();
+                recordLog(`Administrator membuat user baru: ${fullname} (${username})`);
+                showToast('User baru berhasil dibuat.');
+                switchMenu('admin-panel');
+                await secondaryAuth.signOut();
+            } catch (err) {
+                console.error('Gagal membuat user Firebase:', err);
+                alert('Pembuatan user gagal: ' + (err.message || err));
+            } finally {
+                if (secondaryApp) {
+                    try { await secondaryApp.delete(); } catch (_) {}
+                }
+            }
+        }
+
+        function openEditUserScreen(username) {
+            const u = usersDatabase[username];
+            if(!u) return;
+            editingTargetUsername = username;
+            
+            document.getElementById('edit-user-fullname').value = u.fullname;
+            document.getElementById('edit-user-username').value = u.username;
+            document.getElementById('edit-user-position').value = u.position;
+            document.getElementById('edit-user-ink-color').value = u.inkColor || '#2563eb';
+            document.getElementById('edit-user-paraf-file').value = '';
+            document.getElementById('edit-user-ttd-file').value = '';
+            
+            switchMenu('edit-user');
+        }
+
+        async function handleAdminSaveEditUser() {
+            const u = usersDatabase[editingTargetUsername];
+            if(!u) return;
+
+            const fullname = document.getElementById('edit-user-fullname').value;
+            const position = document.getElementById('edit-user-position').value;
+            const inkColor = document.getElementById('edit-user-ink-color').value;
+
+            if(!fullname) { alert('Nama lengkap wajib diisi!'); return; }
+
+            u.fullname = fullname;
+            u.position = position;
+            u.roleTitle = roleTitlesMap[position];
+            u.inkColor = inkColor;
+            u.init = fullname.split(' ').map(n=>n[0]).join('').toUpperCase().substring(0,2);
+
+            const parafFile = document.getElementById('edit-user-paraf-file').files[0];
+            const ttdFile = document.getElementById('edit-user-ttd-file').files[0];
+
+            const replacedProfileAssets = [];
+            if(parafFile) {
+                const oldAsset = getProfileAsset(u, 'parafPng');
+                const asset = await handleFileRouting(parafFile, 'profile/paraf');
+                setProfileAssetMetadata(u, 'parafPng', asset);
+                if (oldAsset) replacedProfileAssets.push({ oldAsset, newUrl: asset.fileData });
+            }
+            if(ttdFile) {
+                const oldAsset = getProfileAsset(u, 'ttdPng');
+                const asset = await handleFileRouting(ttdFile, 'profile/ttd');
+                setProfileAssetMetadata(u, 'ttdPng', asset);
+                if (oldAsset) replacedProfileAssets.push({ oldAsset, newUrl: asset.fileData });
+            }
+
+            // Persistir user record terpisah; app_state hanya berisi metadata kecil.
+            await db.collection('users').doc(u.username).set({
+                ...JSON.parse(JSON.stringify(u)),
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+            }, { merge: true });
+            for (const item of replacedProfileAssets) {
+                try { await deleteReplacedProfileAsset(item.oldAsset, item.newUrl); }
+                catch (cleanupErr) { console.warn('Aset profil lama belum berhasil dihapus:', cleanupErr); }
+            }
+            if(currentUser.username === u.username) {
+                currentUser = u;
+                updateUIUserDisplay();
+            }
+            await saveStateToCloud();
+            recordLog(`Memperbarui data user: ${u.username}`);
+            showToast('Data user berhasil diperbarui.');
+            switchMenu('admin-panel');
+        }
+
+        async function renderAdminUsersTable() {
+            const tbody = document.getElementById('admin-users-table');
+            if (!tbody) return;
+            tbody.innerHTML = `<tr><td colspan="5" class="py-4 text-center text-sub">Memuat data user...</td></tr>`;
+
+            // Koleksi users adalah sumber utama akun; gabungkan dengan data lama.
+            try {
+                const snapshot = await db.collection('users').get();
+                snapshot.forEach(doc => {
+                    const user = normalizeCloudUser(doc.data() || {}, doc.id);
+                    if (user.username) usersDatabase[user.username] = user;
+                });
+                localStorage.setItem('kdp_users_db', JSON.stringify(usersDatabase));
+            } catch (err) {
+                console.error('Gagal memuat daftar user dari Firestore:', err);
+                tbody.innerHTML = `<tr><td colspan="5" class="py-4 text-center text-rose-400">Gagal memuat user dari server. Periksa koneksi/aturan Firestore.</td></tr>`;
+                return;
+            }
+
+            tbody.innerHTML = '';
+            const users = Object.values(usersDatabase).sort((a, b) => (a.username || '').localeCompare(b.username || ''));
+            if (!users.length) {
+                tbody.innerHTML = `<tr><td colspan="5" class="py-4 text-center text-sub">Tidak ada user terdaftar.</td></tr>`;
+                return;
+            }
+            users.forEach(u => {
+                const inkCircle = `<div class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full inline-block border border-panel" style="background-color: ${u.inkColor || '#2563eb'}"></span><span class="font-mono text-[10px]">${u.inkColor || '#2563eb'}</span></div>`;
+                tbody.innerHTML += `
+                    <tr class="border-b border-panel">
+                        <td class="py-2.5 px-3 font-medium text-heading">${u.fullname || '-'}</td>
+                        <td class="py-2.5 px-3 font-mono text-premium-gold">${u.username || '-'}</td>
+                        <td class="py-2.5 px-3 uppercase">${roleTitlesMap[u.position] || u.position || '-'}</td>
+                        <td class="py-2.5 px-3">${inkCircle}</td>
+                        <td class="py-2.5 px-3 text-right space-x-1.5">
+                            <button type="button" onclick="openEditUserScreen('${u.username}')" class="bg-blue-600 hover:bg-blue-500 text-white px-2.5 py-1 rounded text-[10px] font-bold">Edit</button>
+                            ${u.username !== 'admin' ? `<button type="button" onclick="deleteUser('${u.username}')" class="bg-rose-950 text-rose-300 border border-rose-800 px-2.5 py-1 rounded text-[10px]">Hapus</button>` : '<span class="text-[10px] text-sub ml-1">Utama</span>'}
+                        </td>
+                    </tr>`;
+            });
+        }
+
+        async function deleteUser(username) {
+            if (username === 'admin') { alert('Administrator utama tidak dapat dihapus!'); return; }
+            try {
+                await db.collection('users').doc(username.toLowerCase()).delete();
+                delete usersDatabase[username];
+                await saveStateToCloud();
+            } catch (err) {
+                console.error('Gagal menghapus user dari Firestore:', err);
+                alert('User gagal dihapus dari server: ' + (err.message || err));
+                return;
+            }
+            recordLog(`Menghapus user: ${username}`);
+            renderAdminUsersTable();
+            showToast('User berhasil dihapus.');
+        }
+
+        function renderContactsDirectory() {
+            const tbody = document.getElementById('contacts-directory-table');
+            if(!tbody) return;
+            const users = Object.values(usersDatabase);
+            tbody.innerHTML = users.map(u => `
+                <tr class="border-b border-panel">
+                    <td class="py-2.5 px-3 font-medium text-heading">${u.fullname}</td>
+                    <td class="py-2.5 px-3 font-mono text-premium-gold">${u.username}</td>
+                    <td class="py-2.5 px-3 uppercase">${roleTitlesMap[u.position] || u.position}</td>
+                </tr>
+            `).join('');
+        }
+
+        function handleModalDrop(e) {
+            e.preventDefault();
+            document.getElementById('modal-pdf-drop-zone').classList.remove('drag-active');
+            if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+                document.getElementById('modal-doc-file').files = e.dataTransfer.files;
+                handleFileSelectedPreview(document.getElementById('modal-doc-file'));
+            }
+        }
+        function handleFileSelectedPreview(input) {
+            const label = document.getElementById('pdf-selected-filename');
+            if (input.files && input.files[0]) {
+                label.innerText = `File terpilih: ${input.files[0].name} (${(input.files[0].size/1024).toFixed(1)} KB)`;
+            } else { label.innerText = ''; }
+        }
+
+        function getStampColor(type) {
+            const userColor = currentUser?.inkColor || '#2563eb';
+            if (type === 'check' || type === 'cross') return '#000000';
+            if (type === 'highlight') return '#facc15';
+            if (type === 'redline') return userColor;
+            if (type === 'text' || type === 'text_custom') return userColor;
+            return userColor;
+        }
+
+        async function activateCursorStamp(type) {
+            const doc = documents.find(d => d.id === activeDocId);
+            if (!doc || !canUserAction(doc)) { alert('Anda tidak memiliki wewenang atau tahap dokumen belum sampai pada giliran Anda.'); return; }
+            
+            if (type === 'ttd' || type === 'paraf') updatePreviewBox(type);
+
+            const isInsight = ['check', 'cross', 'highlight', 'redline', 'text', 'text_custom'].includes(type);
+            if (isInsight) {
+                const hasSignatureOrParaf = placedStamps.some(s => s.type === 'ttd' || s.type === 'paraf');
+                if (!hasSignatureOrParaf) {
+                    alert('Gagal! Insight tidak dapat dibubuhkan sendirian. Anda harus membubuhkan minimal Paraf atau TTD terlebih dahulu.');
+                    return;
+                }
+            }
+
+            activeStandbyType = type;
+            const color = getStampColor(type);
+            let html = '';
+            if (type === 'ttd') {
+                const src = currentUser.ttdPng;
+                const now = new Date();
+                const dateStr = `${String(now.getDate()).padStart(2,'0')}/${String(now.getMonth()+1).padStart(2,'0')}/${now.getFullYear()}`;
+                if (src) {
+                    html = `<div class="flex items-center gap-1.5 w-full h-full justify-center"><img src="${src}" class="h-full object-contain pointer-events-none" style="max-width:68%;" /><div class="text-[8px] font-bold border px-1 rounded text-black border-black bg-white/90">${dateStr}</div></div>`;
+                } else {
+                    html = `<div class="flex items-center gap-1.5 w-full h-full justify-center border border-dashed border-premium-gold p-1 bg-white/10"><span class="text-[10px] font-bold italic truncate" style="color:${currentUser.inkColor || '#2563eb'}">(TTD) ${currentUser.fullname}</span><div class="text-[8px] font-bold border px-1 rounded text-black border-black bg-white/90 shrink-0">${dateStr}</div></div>`;
+                }
+            } else if (type === 'paraf') {
+                const src = currentUser.parafPng;
+                if (src) html = `<img src="${src}" class="w-full h-full object-contain pointer-events-none" />`;
+                else html = `<div class="w-full h-full flex items-center justify-center font-bold text-xs border border-dashed border-premium-gold" style="color:${currentUser.inkColor || '#2563eb'}">${currentUser.init || 'PF'}</div>`;
+            } else if (type === 'check') html = `<span class="text-3xl font-bold pointer-events-none" style="color:${color}">✔</span>`;
+            else if (type === 'cross') html = `<span class="text-3xl font-bold pointer-events-none" style="color:${color}">✖</span>`;
+            else if (type === 'highlight') html = `<div class="w-full h-full border pointer-events-none" style="background-color:${color}60; border-color:${color}"></div>`;
+            else if (type === 'redline') html = `<div class="w-full h-1 my-auto pointer-events-none" style="background-color:${color}"></div>`;
+            else if (type === 'text') html = `<span class="text-xs font-bold pointer-events-none" style="color:${color}">📝 Teks</span>`;
+
+            const standby = document.getElementById('standby-cursor-stamp');
+            document.getElementById('standby-stamp-content').innerHTML = html;
+            standby.classList.remove('hidden');
+            showToast(`Mode ${type.toUpperCase()} aktif. Ketuk pada dokumen.`, 2000);
+        }
+
+        function setupCanvasMouseInteractions(wrapperDiv, pageNum) {
+            const doc = documents.find(d => d.id === activeDocId);
+            if (doc && (doc.isCompleted || doc.status?.startsWith('Selesai') || !canUserAction(doc))) return;
+
+            const standby = document.getElementById('standby-cursor-stamp');
+
+            wrapperDiv.onmousemove = (e) => {
+                const rect = wrapperDiv.getBoundingClientRect();
+                const mouseX = e.clientX - rect.left;
+                const mouseY = e.clientY - rect.top;
+
+                if (activeStandbyType) {
+                    standby.style.left = Math.max(0, mouseX - 60) + 'px';
+                    standby.style.top = Math.max(0, mouseY - 25) + 'px';
+                }
+            };
+
+            const handlePlacementAction = (clientX, clientY) => {
+                if (!activeStandbyType) return;
+                const rect = wrapperDiv.getBoundingClientRect();
+                const pt = { x: clientX - rect.left, y: clientY - rect.top };
+
+                const currentType = activeStandbyType;
+                activeStandbyType = null;
+                standby.classList.add('hidden');
+
+                if (currentType === 'text') {
+                    createDirectInlineTextInput(pageNum, pt.x, pt.y, wrapperDiv);
+                    return;
+                }
+
+                let w = currentType === 'ttd' ? 160 : (currentType === 'paraf' ? 80 : 100);
+                let h = currentType === 'ttd' ? 65 : (currentType === 'paraf' ? 45 : 40);
+                if (['check','cross'].includes(currentType)) { w = 40; h = 40; }
+                else if (currentType === 'highlight') { w = 140; h = 30; }
+                else if (currentType === 'redline') { w = 150; h = 12; }
+
+                placedStamps.push({
+                    id: Date.now(), type: currentType, page: pageNum,
+                    x: Math.max(0, pt.x - w/2), y: Math.max(0, pt.y - h/2),
+                    width: w, height: h, rotation: 0, author: currentUser.fullname, color: getStampColor(currentType)
+                });
+                renderAllStampsLayers();
+                showToast('Stempel berhasil ditempatkan.', 2000);
+            };
+
+            wrapperDiv.onclick = (e) => {
+                if (!activeStandbyType || e.target.tagName === 'BUTTON' || e.target.closest('button') || e.target.closest('.placed-stamp-item')) return;
+                handlePlacementAction(e.clientX, e.clientY);
+            };
+
+            wrapperDiv.ontouchend = (e) => {
+                if (!activeStandbyType || e.target.tagName === 'BUTTON' || e.target.closest('button') || e.target.closest('.placed-stamp-item')) return;
+                const touch = e.changedTouches[0];
+                handlePlacementAction(touch.clientX, touch.clientY);
+            };
+        }
+
+        function createDirectInlineTextInput(pageNum, x, y, wrapperDiv) {
+            const inkColor = getStampColor('text');
+            const container = document.createElement('div');
+            container.className = 'inline-text-editor-box';
+            container.style.left = Math.max(5, x - 10) + 'px';
+            container.style.top = Math.max(5, y - 10) + 'px';
+
+            const toolbar = document.createElement('div');
+            toolbar.className = 'inline-text-toolbar';
+            toolbar.innerHTML = `
+                <div class="flex items-center gap-1">
+                    <button type="button" onclick="adjustEditorFontSize(this, -2)">A-</button>
+                    <button type="button" onclick="adjustEditorFontSize(this, 2)">A+</button>
+                </div>
+                <div class="flex items-center gap-1">
+                    <button type="button" class="bg-emerald-700 text-white" onclick="saveInlineText(this, ${pageNum}, ${x}, ${y})">Simpan</button>
+                    <button type="button" class="bg-rose-800 text-white" onclick="this.closest('.inline-text-editor-box').remove()">✕</button>
+                </div>
+            `;
+
+            const textarea = document.createElement('textarea');
+            textarea.placeholder = 'Ketik teks di sini...';
+            textarea.className = 'bg-transparent outline-none resize-none p-1 block w-full';
+            textarea.style.width = '210px';
+            textarea.style.minHeight = '55px';
+            textarea.style.fontSize = '14px';
+            textarea.style.color = inkColor;
+
+            container.appendChild(toolbar);
+            container.appendChild(textarea);
+            wrapperDiv.appendChild(container);
+            textarea.focus();
+        }
+
+        window.saveInlineText = function(btn, pageNum, x, y) {
+            const container = btn.closest('.inline-text-editor-box');
+            const textarea = container.querySelector('textarea');
+            const txt = textarea.value.trim();
+            const fontSize = parseInt(textarea.style.fontSize || '14');
+
+            if (txt) {
+                placedStamps.push({
+                    id: Date.now(), type: 'text_custom',
+                    page: pageNum, x: x, y: y, width: 210, height: Math.max(60, textarea.scrollHeight + 15), rotation: 0,
+                    text: txt, fontSize: fontSize, author: currentUser.fullname, color: textarea.style.color || '#2563eb'
+                });
+                renderAllStampsLayers();
+                showToast('Teks berhasil ditambahkan.', 2000);
+            }
+            container.remove();
+        }
+
+        function adjustEditorFontSize(btn, delta) {
+            const ta = btn.closest('.inline-text-editor-box').querySelector('textarea');
+            let currentSize = parseInt(ta.style.fontSize || '14');
+            ta.style.fontSize = Math.max(10, currentSize + delta) + 'px';
+        }
+
+        function renderAllStampsLayers() {
+            const doc = documents.find(d => d.id === activeDocId);
+            const userAlreadyApproved = doc && (doc.approvedUsers || []).includes(currentUser?.username);
+            const isCompleted = doc && (doc.isCompleted || doc.status?.startsWith('Selesai') || userAlreadyApproved);
+
+            for (let i = 1; i <= totalPdfPages; i++) {
+                const layer = document.getElementById(`stamps-layer-page-${i}`);
+                if (!layer) continue;
+                layer.innerHTML = '';
+                
+                placedStamps.filter(s => s.page === i).forEach(s => {
+                    const div = document.createElement('div');
+                    div.className = `placed-stamp-item absolute border border-premium-gold/70 bg-black/20 select-none`;
+                    div.setAttribute('data-id', s.id);
+                    
+                    div.style.left = s.x + 'px'; 
+                    div.style.top = s.y + 'px'; 
+                    div.style.width = s.width + 'px'; 
+                    div.style.height = s.height + 'px';
+                    div.style.transform = `rotate(${s.rotation || 0}deg)`;
+                    div.style.borderColor = s.color || '#d4af37';
+
+                    let inner = '';
+                    if (s.type === 'ttd' || s.type === 'paraf') {
+                        const authorUser = Object.values(usersDatabase).find(u => u.fullname === s.author) || currentUser;
+                        const src = s.type === 'ttd' ? authorUser?.ttdPng : authorUser?.parafPng;
+                        
+                        if (s.type === 'ttd') {
+                            const now = new Date();
+                            const dateStr = `${String(now.getDate()).padStart(2,'0')}/${String(now.getMonth()+1).padStart(2,'0')}/${now.getFullYear()}`;
+                            if (src) {
+                                inner = `
+                                    <div class="flex items-center gap-1.5 w-full h-full justify-center pointer-events-none">
+                                        <img src="${src}" class="h-full object-contain" style="max-width:65%;" />
+                                        <div class="text-[8px] font-bold border px-1 rounded text-black border-black bg-white/90 shrink-0">${dateStr}</div>
+                                    </div>
+                                `;
+                            } else {
+                                inner = `
+                                    <div class="flex items-center gap-1.5 w-full h-full justify-center bg-white/90 p-1 pointer-events-none">
+                                        <span class="text-[10px] font-bold italic truncate" style="color:${authorUser.inkColor || '#2563eb'}">(TTD) ${authorUser.fullname}</span>
+                                        <div class="text-[8px] font-bold border px-1 rounded text-black border-black bg-white shrink-0">${dateStr}</div>
+                                    </div>
+                                `;
+                            }
+                        } else {
+                            if (src) {
+                                inner = `<img src="${src}" class="w-full h-full object-contain pointer-events-none" />`;
+                            } else {
+                                inner = `<div class="w-full h-full flex items-center justify-center font-bold text-xs bg-white/90" style="color:${authorUser.inkColor || '#2563eb'}">${authorUser.init || 'PF'}</div>`;
+                            }
+                        }
+                    } else if (s.type === 'check') inner = `<div class="text-2xl font-bold flex items-center justify-center w-full h-full pointer-events-none" style="color:${s.color}">✔</div>`;
+                    else if (s.type === 'cross') inner = `<div class="text-2xl font-bold flex items-center justify-center w-full h-full pointer-events-none" style="color:${s.color}">✖</div>`;
+                    else if (s.type === 'highlight') inner = `<div class="w-full h-full border pointer-events-none" style="background-color:${s.color}60; border-color:${s.color}"></div>`;
+                    else if (s.type === 'redline') inner = `<div class="w-full h-1 my-auto pointer-events-none" style="background-color:${s.color}"></div>`;
+                    else if (s.type === 'text_custom') {
+                        inner = `<div style="font-size:${s.fontSize}px; color:${s.color}; white-space:pre-wrap; background: transparent;" class="w-full h-full p-1 pointer-events-none overflow-hidden">${s.text}</div>`;
+                    }
+                    
+                    div.innerHTML += inner;
+
+                    if (!isCompleted && canUserAction(doc)) {
+                        const delBtn = document.createElement('div');
+                        delBtn.className = 'stamp-delete-btn';
+                        delBtn.innerHTML = '×';
+                        delBtn.onclick = (ev) => { ev.stopPropagation(); deleteStamp(s.id); };
+
+                        const rotBtn = document.createElement('div');
+                        rotBtn.className = 'stamp-rotate-btn';
+                        rotBtn.innerHTML = '↻';
+                        let isRotating = false, centerX = 0, centerY = 0;
+
+                        rotBtn.onpointerdown = (e) => {
+                            isRotating = true;
+                            const rect = div.getBoundingClientRect();
+                            centerX = rect.left + rect.width / 2;
+                            centerY = rect.top + rect.height / 2;
+                            rotBtn.setPointerCapture(e.pointerId);
+                            e.stopPropagation();
+                        };
+
+                        rotBtn.onpointermove = (e) => {
+                            if (!isRotating) return;
+                            const radians = Math.atan2(e.clientY - centerY, e.clientX - centerX);
+                            let degree = (radians * (180 / Math.PI)) + 90;
+                            s.rotation = Math.round(degree);
+                            div.style.transform = `rotate(${s.rotation}deg)`;
+                        };
+
+                        rotBtn.onpointerup = (e) => {
+                            isRotating = false;
+                            try { rotBtn.releasePointerCapture(e.pointerId); } catch(err){}
+                        };
+                        const resizeHandle = document.createElement('div');
+                        resizeHandle.className = 'stamp-resize-handle';
+
+                        div.appendChild(delBtn);
+                        div.appendChild(rotBtn);
+                        div.appendChild(resizeHandle);
+
+                        let isDragging = false, startX, startY;
+                        const startDrag = (clientX, clientY) => {
+                            isDragging = true;
+                            startX = clientX - s.x;
+                            startY = clientY - s.y;
+                        };
+                        const onDrag = (clientX, clientY) => {
+                            if (!isDragging) return;
+                            s.x = Math.max(0, clientX - startX);
+                            s.y = Math.max(0, clientY - startY);
+                            div.style.left = s.x + 'px';
+                            div.style.top = s.y + 'px';
+                        };
+                        const endDrag = () => { isDragging = false; };
+
+                        div.onmousedown = (e) => {
+                            if (e.target === delBtn || e.target === rotBtn || e.target === resizeHandle) return;
+                            startDrag(e.clientX, e.clientY);
+                            e.stopPropagation();
+                        };
+                        window.addEventListener('mousemove', (e) => { onDrag(e.clientX, e.clientY); });
+                        window.addEventListener('mouseup', endDrag);
+
+                        div.ontouchstart = (e) => {
+                            if (e.target === delBtn || e.target === rotBtn || e.target === resizeHandle) return;
+                            const t = e.touches[0];
+                            startDrag(t.clientX, t.clientY);
+                            e.stopPropagation();
+                        };
+                        window.addEventListener('touchmove', (e) => {
+                            if (!isDragging) return;
+                            const t = e.touches[0];
+                            onDrag(t.clientX, t.clientY);
+                        }, { passive: true });
+                        window.addEventListener('touchend', endDrag);
+
+                        let isResizing = false, initW, initH, initMouseX, initMouseY;
+                        resizeHandle.onmousedown = (e) => { isResizing = true; initW = s.width; initH = s.height; initMouseX = e.clientX; initMouseY = e.clientY; e.stopPropagation(); };
+                        window.addEventListener('mousemove', (e) => {
+                            if (!isResizing) return;
+                            s.width = Math.max(30, initW + (e.clientX - initMouseX));
+                            s.height = Math.max(20, initH + (e.clientY - initMouseY));
+                            div.style.width = s.width + 'px'; div.style.height = s.height + 'px';
+                        });
+                        window.addEventListener('mouseup', () => { isResizing = false; });
+
+                        resizeHandle.ontouchstart = (e) => {
+                            isResizing = true; initW = s.width; initH = s.height;
+                            const t = e.touches[0]; initMouseX = t.clientX; initMouseY = t.clientY;
+                            e.stopPropagation();
+                        };
+                        window.addEventListener('touchmove', (e) => {
+                            if (!isResizing) return;
+                            const t = e.touches[0];
+                            s.width = Math.max(30, initW + (t.clientX - initMouseX));
+                            s.height = Math.max(20, initH + (t.clientY - initMouseY));
+                            div.style.width = s.width + 'px'; div.style.height = s.height + 'px';
+                        }, { passive: true });
+                        window.addEventListener('touchend', () => { isResizing = false; });
+                    }
+
+                    layer.appendChild(div);
+                });
+            }
+        }
+
+        function deleteStamp(id) {
+            placedStamps = placedStamps.filter(s => s.id !== id);
+            renderAllStampsLayers();
+        }
+
+        function toggleApprovalButtonState() {
+            const doc = documents.find(d => d.id === activeDocId);
+            if (!doc || doc.isCompleted || doc.status?.startsWith('Selesai') || !canUserAction(doc)) return;
+
+            const checkedMob = document.getElementById('approval-checkbox-mob').checked;
+            const checkedDesk = document.getElementById('approval-checkbox').checked;
+            const isChecked = checkedMob || checkedDesk;
+
+            ['approval-checkbox', 'approval-checkbox-mob'].forEach(id => {
+                const el = document.getElementById(id);
+                if(el) el.checked = isChecked;
+            });
+
+            ['btn-approve-action', 'btn-approve-action-mob'].forEach(id => {
+                const btn = document.getElementById(id);
+                if(!btn) return;
+                if (isChecked) {
+                    btn.disabled = false;
+                    btn.className = id.includes('mob') ? "py-1 bg-premium-gold text-regal-black rounded text-[9px] font-bold cursor-pointer" : "w-full py-2 bg-premium-gold text-regal-black rounded-lg text-xs font-bold cursor-pointer";
+                } else {
+                    btn.disabled = true;
+                    btn.className = id.includes('mob') ? "py-1 bg-gray-600 text-gray-300 rounded text-[9px] font-bold cursor-not-allowed" : "w-full py-2 bg-gray-600 text-gray-300 rounded-lg text-xs font-bold cursor-not-allowed";
+                }
+            });
+        }
+
+        async function postDocumentComment() {
+            const input = document.getElementById('new-comment-input');
+            const txt = input.value.trim();
+            if(!txt) return;
+            const doc = documents.find(d => d.id === activeDocId);
+            if(!doc) return;
+            if(!doc.comments) doc.comments = [];
+            const now = new Date();
+            const timeStr = `${String(now.getDate()).padStart(2,'0')}/${String(now.getMonth()+1).padStart(2,'0')}/${now.getFullYear()} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+            doc.comments.push({ author: currentUser.fullname, role: currentUser.roleTitle, text: txt, time: timeStr });
+            input.value = '';
+            renderCommentsUI();
+            await saveStateToCloud();
+        }
+
+        async function postDocumentCommentMobile() {
+            const input = document.getElementById('new-comment-input-mob');
+            const txt = input.value.trim();
+            if(!txt) return;
+            const doc = documents.find(d => d.id === activeDocId);
+            if(!doc) return;
+            if(!doc.comments) doc.comments = [];
+            const now = new Date();
+            const timeStr = `${String(now.getDate()).padStart(2,'0')}/${String(now.getMonth()+1).padStart(2,'0')}/${now.getFullYear()} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+            doc.comments.push({ author: currentUser.fullname, role: currentUser.roleTitle, text: txt, time: timeStr });
+            input.value = '';
+            renderCommentsUI();
+            await saveStateToCloud();
+        }
+
+        function renderCommentsUI() {
+            const doc = documents.find(d => d.id === activeDocId);
+            const html = doc && doc.comments && doc.comments.length ? doc.comments.map(c => `
+                <div class="border-b border-panel/50 pb-1.5 mb-1">
+                    <div class="flex justify-between items-center text-[10px]">
+                        <span class="font-bold text-premium-gold">${c.author} <span class="text-[9px] text-sub font-normal">(${c.role || '-'})</span></span>
+                        <span class="font-mono text-[9px] text-sub">📅 ${c.time || '-'}</span>
+                    </div>
+                    <p class="text-heading mt-0.5">${c.text}</p>
+                </div>
+            `).join('') : '<span class="text-sub italic">Belum ada catatan.</span>';
+            ['doc-comments-container', 'doc-comments-container-mob'].forEach(id => {
+                const el = document.getElementById(id);
+                if(el) el.innerHTML = html;
+            });
+        }
+
+        function openUploadModal() {
+            document.getElementById('modal-doc-title').value = '';
+            document.getElementById('modal-doc-file').value = '';
+            document.getElementById('pdf-selected-filename').innerText = '';
+            document.getElementById('upload-modal').classList.remove('hidden');
+        }
+        function closeUploadModal() { document.getElementById('upload-modal').classList.add('hidden'); }
+// ==========================================
+// KDP DOKU SIGN STORAGE ROUTING (TANPA FIREBASE STORAGE)
+// Firebase: Authentication/Firestore untuk akun dan metadata.
+// Cloudinary: sampai 5 MiB.
+// Cloudflare R2: di atas 5 sampai 15 MiB.
+// Supabase: di atas 15 MiB. Penghapusan ketiga provider dilakukan melalui Worker.
+// Satu file hanya diunggah ke SATU provider; tidak ada salinan ganda.
+// ==========================================
+// Set URL Cloudflare Worker backend di sini setelah deploy.
+const KDP_STORAGE_DELETE_ENDPOINT = 'https://kdp-storage-delete.kdpnbk.workers.dev';
+const KDP_STORAGE_LIMITS = {
+    cloudinary: 5 * 1024 * 1024,  // sampai 5 MiB: Cloudinary
+    r2: 15 * 1024 * 1024          // >5 sampai 15 MiB: Cloudflare R2; di atas 15 MiB: Supabase
+};
+
+function makeStorageFileName(file, category) {
+    const safeName = String(file.name || `${category}.bin`).replace(/[^a-zA-Z0-9._-]/g, '_');
+    return `${Date.now()}_${Math.random().toString(36).slice(2, 10)}_${safeName}`;
+}
+
+async function uploadToCloudinary(file, category = 'documents') {
+    if (!file || !(file instanceof Blob)) throw new Error('File Cloudinary tidak valid.');
+    const cloudName = "blml8056";
+    const uploadPreset = "kdp_preset";
+    const formData = new FormData();
+    formData.append("file", file, makeStorageFileName(file, category));
+    formData.append("upload_preset", uploadPreset);
+    formData.append("folder", `kdp_doku_sign/${category}`);
+    const response = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/raw/upload`, {
+        method: "POST", body: formData
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.secure_url) {
+        throw new Error(data.error?.message || `Gagal mengunggah ${category} ke Cloudinary.`);
+    }
+    return { url:data.secure_url, publicId:data.public_id };
+}
+
+async function uploadToSupabase(file, category = 'documents') {
+    if (typeof supabaseClient === 'undefined' || !supabaseClient) {
+        throw new Error('Supabase belum terhubung.');
+    }
+    const normalizedCategory = String(category || 'documents').split('/').filter(Boolean).join('/');
+    const isProfileAsset = normalizedCategory.startsWith('profile/') || normalizedCategory.startsWith('avatars/');
+    const bucketName = isProfileAsset ? 'avatars' : 'documents-bucket';
+    const folderName = normalizedCategory.startsWith('profile/')
+        ? 'avatars/' + normalizedCategory.slice('profile/'.length)
+        : normalizedCategory;
+    const filePath = `${folderName}/${makeStorageFileName(file, category)}`;
+
+    const { data, error } = await supabaseClient.storage.from(bucketName).upload(filePath, file, {
+        contentType: file.type || 'application/octet-stream', upsert: false
+    });
+    if (error) throw new Error(`Supabase bucket "${bucketName}": ${error.message || 'upload gagal'}`);
+
+    const { data: publicData } = supabaseClient.storage.from(bucketName).getPublicUrl(data.path);
+    if (!publicData?.publicUrl) {
+        throw new Error(`URL dari bucket "${bucketName}" tidak tersedia. Periksa konfigurasi bucket dan policy akses.`);
+    }
+    return { url:publicData.publicUrl, path:data.path, bucket:bucketName };
+}
+
+async function uploadToR2(file, category = 'documents') {
+    if (!file || !(file instanceof Blob)) throw new Error('File R2 tidak valid.');
+    if (!auth.currentUser) throw new Error('Sesi login tidak tersedia.');
+    const token = await auth.currentUser.getIdToken();
+    const formData = new FormData();
+    formData.append('file', file, makeStorageFileName(file, category));
+    formData.append('category', String(category || 'documents'));
+    const response = await fetch(`${KDP_STORAGE_DELETE_ENDPOINT}/upload`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` },
+        body: formData
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || !result.success || !result.url || !(result.storagePath || result.key)) {
+        throw new Error(result.error || 'Gagal mengunggah file ke Cloudflare R2.');
+    }
+    return { url: result.url, path: result.storagePath || result.key, bucket: 'kdp-doku-sign' };
+}
+
+async function handleFileRouting(file, category = 'documents') {
+    if (!file || typeof file.size !== 'number') throw new Error('File tidak ditemukan atau tidak valid.');
+    const size = file.size;
+    let storageType, fileData, storagePath = null, storageBucket = null, storagePublicId = null;
+
+    // Satu file hanya masuk ke satu provider, berdasarkan ukuran file final.
+    if (size <= KDP_STORAGE_LIMITS.cloudinary) {
+        storageType = 'cloudinary';
+        const uploaded = await uploadToCloudinary(file, category);
+        fileData = uploaded.url; storagePublicId = uploaded.publicId;
+    } else if (size <= KDP_STORAGE_LIMITS.r2) {
+        storageType = 'r2';
+        const uploaded = await uploadToR2(file, category);
+        fileData = uploaded.url; storagePath = uploaded.path; storageBucket = uploaded.bucket;
+    } else {
+        storageType = 'supabase';
+        const uploaded = await uploadToSupabase(file, category);
+        fileData = uploaded.url; storagePath = uploaded.path; storageBucket = uploaded.bucket;
+    }
+
+    if (!fileData || typeof fileData !== 'string') {
+        throw new Error('Upload selesai tanpa URL file yang valid; metadata tidak disimpan.');
+    }
+    return {
+        storageType,
+        fileData, storagePath, storageBucket, storagePublicId,
+        sizeBytes: size,
+        sizeMB: (size / (1024 * 1024)).toFixed(2),
+        category
+    };
+}
+
+// Kompres foto avatar menjadi JPEG ringan. Batas target 900 KB agar aman untuk jaringan seluler.
+async function compressAvatarImage(file) {
+    if (!file || !/^image\/(png|jpeg|webp)$/.test(file.type)) {
+        throw new Error('Avatar harus berupa gambar PNG, JPG, atau WebP.');
+    }
+    if (!('createImageBitmap' in window)) {
+        // Fallback: file asli tetap dirutekan sesuai ukuran, tidak pernah dipaksa masuk provider yang salah.
+        return file;
+    }
+
+    const bitmap = await createImageBitmap(file);
+    try {
+        const maxDimension = 1200;
+        const scale = Math.min(1, maxDimension / Math.max(bitmap.width, bitmap.height));
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+        canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+        const ctx = canvas.getContext('2d', { alpha: false });
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+
+        let quality = 0.84;
+        let blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', quality));
+        while (blob && blob.size > 900 * 1024 && quality > 0.45) {
+            quality -= 0.1;
+            blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', quality));
+        }
+        if (!blob) throw new Error('Browser gagal mengompres foto avatar.');
+        return new File([blob], `${(file.name || 'avatar').replace(/\.[^.]+$/, '')}.jpg`, {
+            type: 'image/jpeg', lastModified: Date.now()
+        });
+    } finally {
+        bitmap.close?.();
+    }
+}
+
+       async function submitModalDocument() {
+    const fileInput = document.getElementById('modal-doc-file');
+    if (!fileInput.files || !fileInput.files[0]) { 
+        alert('Pilih file PDF terlebih dahulu!'); 
+        return; 
+    }
+    const file = fileInput.files[0];
+    const customTitle = document.getElementById('modal-doc-title').value.trim();
+    const docTitle = customTitle !== '' ? customTitle : file.name;
+    const docType = document.getElementById('doc-type-select').value;
+    
+    // 1. Ambil tombol kirim & ubah menjadi mode LOADING
+    const submitBtn = document.querySelector('#upload-modal button[onclick="submitModalDocument()"]');
+    const originalBtnText = submitBtn.innerHTML;
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = `⏳ Sedang mengunggah (${(file.size / 1024 / 1024).toFixed(1)} MB)...`;
+    
+    try {
+        showToast(`Memproses file & mengunggah ke cloud, mohon tunggu...`, 4000);
+        
+        // Panggil routing otomatis sesuai ukuran file
+        const routingResult = await handleFileRouting(file);
+
+        let initialStatus = 'Tahap 1: Menunggu 2 Staff KDP TTD';
+        if (docType === 'kasir') initialStatus = 'Tahap 1: Menunggu TTD Kasir';
+        else if (docType === 'admkdp') initialStatus = 'Tahap 1: Menunggu TTD Admin KDP';
+        else if (docType === 'pihak_ketiga') initialStatus = 'Tahap 1: Menunggu 2 Staff KDP TTD';
+        else if (docType === 'lain_lain') initialStatus = 'Menunggu Review Staff KDP (Opsional) atau KDP Kabag';
+
+        const nowTime = Date.now();
+        const uniqueDocId = String(nowTime) + '_' + Math.random().toString(36).substr(2, 9);
+        
+        const newDoc = {
+            id: uniqueDocId, 
+            title: docTitle, 
+            docType,
+            uploader: `${currentUser.fullname} (${currentUser.roleTitle})`,
+            status: initialStatus, 
+            step: 1,
+            fileData: routingResult.fileData, 
+            storageType: routingResult.storageType,
+            storagePath: routingResult.storagePath, storageBucket: routingResult.storageBucket, storagePublicId: routingResult.storagePublicId,
+            fileSizeMB: routingResult.sizeMB, 
+            comments: [], 
+            approvedUsers: [],
+            approvedStaffList: [], 
+            kabagHasVerified: false, 
+            isCompleted: false,
+            createdAt: nowTime,
+            lastUpdated: nowTime
+        };
+
+        await db.collection('documents').doc(uniqueDocId).set(newDoc);
+        
+        await recordLog(`Mengunggah dokumen baru (${routingResult.storageType.toUpperCase()}): ${docTitle}`);
+        notifyNextApprovers(docType, 1, docTitle, uniqueDocId);
+
+        closeUploadModal(); 
+        showToast(`Dokumen berhasil disimpan via ${routingResult.storageType.toUpperCase()}!`);
+    } catch (err) {
+        console.error("Gagal unggah file:", err);
+        alert('Gagal mengunggah file: ' + err.message);
+    } finally {
+        // 2. Kembalikan tombol seperti semula setelah selesai (baik sukses maupun gagal)
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = originalBtnText;
+    }
+}
+        // ==========================================
+        // ATURAN 5 JENIS DOKUMEN & OTORISASI
+        // ==========================================
+        function canUserAction(doc) {
+            if (!currentUser || !doc) return false;
+            if (currentUser.position === 'administrator') return false;
+            if (doc.isCompleted || doc.status?.startsWith('Selesai') || doc.step === 0) return false;
+            if ((doc.approvedUsers || []).includes(currentUser.username)) {
+                // Untuk file KDP / Pihak Ketiga, jika staff ke-3 ingin review sebelum Kabag verifikasi
+                const type = doc.docType;
+                const pos = currentUser.position;
+                if ((type === 'kdp' || type === 'pihak_ketiga') && pos === 'staff_kdp' && !doc.kabagHasVerified) {
+                    const staffCount = (doc.approvedStaffList || []).length;
+                    if (staffCount >= 2 && !doc.approvedStaffList.includes(currentUser.username)) {
+                        return true; // Staff ke-3 boleh review tambahan
+                    }
+                }
+                return false;
+            }
+
+            const pos = currentUser.position;
+            const type = doc.docType;
+
+            // 1. & 4. File KDP & Pihak Ketiga
+            if (type === 'kdp' || type === 'pihak_ketiga') {
+                const staffCount = (doc.approvedStaffList || []).length;
+                if (staffCount < 2) {
+                    return pos === 'staff_kdp';
+                }
+                if (staffCount >= 2 && !doc.kabagHasVerified) {
+                    if (pos === 'staff_kdp') return true; // Staff ke-3 opsional sebelum Kabag verifikasi
+                    if (pos === 'kabag') return true;      // Kabag verifikasi
+                }
+                if (doc.step === 3 && pos === 'pimpinan') return true;
+            }
+
+            // 2. File Kasir
+            if (type === 'kasir') {
+                if (doc.step === 1 && pos === 'kasir') return true;
+                if (doc.step === 2 && pos === 'kabag') return true;
+                if (doc.step === 3 && pos === 'pimpinan') return true;
+            }
+
+            // 3. File ADMKDP
+            if (type === 'admkdp') {
+                if (doc.step === 1 && pos === 'admin_kdp') return true;
+                if (doc.step === 2 && pos === 'kabag') return true;
+                if (doc.step === 3 && pos === 'pimpinan') return true;
+            }
+
+            // 5. File Lain-Lain
+            if (type === 'lain_lain') {
+                if (!doc.kabagHasVerified && pos === 'staff_kdp') return true; // Staff KDP opsional (max 3)
+                if (!doc.kabagHasVerified && pos === 'kabag') return true;      // Kabag bisa langsung periksa sejak awal
+                if (doc.step === 3 && pos === 'pimpinan') return true;
+            }
+
+            return false;
+        }
+
+        async function notifyNextApprovers(docType, step, docTitle, docId) {
+            let targetRoles = [];
+            if (docType === 'kdp' || docType === 'pihak_ketiga') {
+                if (step === 1) targetRoles = ['staff_kdp'];
+                else if (step === 2) targetRoles = ['kabag'];
+                else if (step === 3) targetRoles = ['pimpinan'];
+            } else if (docType === 'kasir') {
+                if (step === 1) targetRoles = ['kasir'];
+                else if (step === 2) targetRoles = ['kabag'];
+                else if (step === 3) targetRoles = ['pimpinan'];
+            } else if (docType === 'admkdp') {
+                if (step === 1) targetRoles = ['admin_kdp'];
+                else if (step === 2) targetRoles = ['kabag'];
+                else if (step === 3) targetRoles = ['pimpinan'];
+            } else if (docType === 'lain_lain') {
+                if (step === 1) targetRoles = ['staff_kdp', 'kabag']; // Kabag & Staff bisa langsung
+                else if (step === 3) targetRoles = ['pimpinan'];
+            }
+
+            for (let [username, userObj] of Object.entries(usersDatabase)) {
+                if (targetRoles.includes(userObj.position)) {
+                    await createNotification(username, `Dokumen Perlu Tindakan`, `Dokumen "${docTitle}" memerlukan review/otorisasi Anda.`, docId);
+                }
+            }
+        }
+
+        function renderSummaryTable() {
+            const tbody = document.getElementById('summary-documents-table');
+            const thead = document.getElementById('summary-table-header');
+            if (!tbody || !thead) return;
+
+            const isExpiredCategory = currentSummaryFilter === 'rejected' || currentSummaryFilter === 'completed';
+
+            // 1. Header tabel dengan tambahan kolom Ukuran
+            thead.innerHTML = `
+                <tr class="border-b border-panel text-[10px] font-semibold text-sub uppercase">
+                    <th class="py-2.5 px-3 w-[25%]">Nama Dokumen & Tanggal</th>
+                    <th class="py-2.5 px-3 w-[12%]">Jenis</th>
+                    <th class="py-2.5 px-3 w-[12%]">Ukuran</th>
+                    <th class="py-2.5 px-3 w-[18%]">Pengaju</th>
+                    <th class="py-2.5 px-3 w-[18%]">Status</th>
+                    ${isExpiredCategory ? `<th class="py-2.5 px-3 w-[10%] text-amber-400">Masa Kadaluarsa</th>` : ''}
+                    <th class="py-2.5 px-3 text-right w-[15%]">Aksi</th>
+                </tr>
+            `;
+
+            tbody.innerHTML = '';
+            let filtered = documents;
+            if (currentSummaryFilter === 'process') filtered = documents.filter(d => !d.isCompleted && !d.status?.startsWith('Selesai') && d.step > 0);
+            else if (currentSummaryFilter === 'action') filtered = documents.filter(d => canUserAction(d));
+            else if (currentSummaryFilter === 'completed') filtered = documents.filter(d => d.isCompleted || d.status?.startsWith('Selesai'));
+            else if (currentSummaryFilter === 'rejected') filtered = documents.filter(d => d.step === 0);
+
+            const colSpanCount = isExpiredCategory ? 7 : 6;
+            if (!filtered.length) { 
+                tbody.innerHTML = `<tr><td colspan="${colSpanCount}" class="py-4 text-center text-sub">Tidak ada dokumen.</td></tr>`; 
+                return; 
+            }
+
+            filtered.forEach(doc => {
+                const isCompleted = doc.isCompleted || doc.status?.startsWith('Selesai');
+                const dateDisplay = formatDocDate(doc.createdAt || doc.id);
+                
+                // 2. Format tampilan ukuran file & badge storage
+                const sizeDisplay = doc.fileSizeMB ? `${doc.fileSizeMB} MB` : '0.00 MB';
+                const storageBadge = doc.storageType ? `<span class="text-[9px] uppercase font-mono px-1.5 py-0.5 rounded bg-panel border border-panel text-sub">${doc.storageType}</span>` : '';
+
+                let daysLeftCell = '';
+                if (isExpiredCategory) {
+                    const daysLeft = calculateRemainingDays(doc);
+                    daysLeftCell = `<td class="py-2.5 px-3 font-mono font-bold ${daysLeft <= 3 ? 'text-rose-400' : 'text-amber-400'}">⏳ ${daysLeft} Hari Lagi</td>`;
+                }
+
+                tbody.innerHTML += `
+                    <tr class="border-b border-panel">
+                        <td class="py-2.5 px-3">
+                            <div class="font-medium text-heading">${doc.title}</div>
+                            <div class="text-[10px] text-sub font-mono mt-0.5">📅 ${dateDisplay}</div>
+                        </td>
+                        <td class="py-2.5 px-3 uppercase text-premium-gold font-bold">${doc.docType}</td>
+                        <!-- 3. Kolom Ukuran & Storage -->
+                        <td class="py-2.5 px-3 whitespace-nowrap">
+                            <div class="font-mono text-xs font-semibold text-heading">${sizeDisplay}</div>
+                            <div class="mt-0.5">${storageBadge}</div>
+                        </td>
+                        <td class="py-2.5 px-3 text-sub">${doc.uploader}</td>
+                        <td class="py-2.5 px-3"><span class="px-2 py-1 rounded text-[10px] bg-amber-950/60 text-amber-300 border border-amber-800">${doc.status}</span></td>
+                        ${daysLeftCell}
+                        <td class="py-2.5 px-3 text-right space-x-1.5">
+                            <button type="button" onclick="openPreview('${doc.id}')" class="bg-premium-gold text-regal-black px-2.5 py-1 rounded-lg text-[11px] font-bold">Review</button>
+                            <button type="button" onclick="deleteDoc('${doc.id}')" class="bg-rose-950 text-rose-300 border border-rose-800 px-2 py-1 rounded-lg text-[11px]">🗑️</button>
+                        </td>
+                    </tr>`;
+            });
+        }
+
+
+        function renderMyDocuments() {
+            const tbody = document.getElementById('my-documents-table');
+            if (!tbody) return;
+            tbody.innerHTML = documents.map(d => {
+                const isCompleted = d.isCompleted || d.status?.startsWith('Selesai');
+                const dateDisplay = formatDocDate(d.createdAt || d.id);
+                return `
+                    <tr class="border-b border-panel">
+                        <td class="py-2.5 px-3">
+                            <div class="font-medium text-heading">${d.title}</div>
+                            <div class="text-[10px] text-sub font-mono mt-0.5">📅 ${dateDisplay}</div>
+                        </td>
+                        <td class="py-2.5 px-3 uppercase text-premium-gold">${d.docType}</td>
+                        <td class="py-2.5 px-3">${d.status}</td>
+                        <td class="py-2.5 px-3 text-right"><button type="button" onclick="openPreview('${d.id}')" class="bg-premium-gold text-black px-2.5 py-1 rounded font-bold">Review</button></td>
+                    </tr>`;
+            }).join('');
+        }
+
+        function renderPendingDocuments() {
+            const tbody = document.getElementById('pending-approval-table');
+            if (!tbody) return;
+            const pending = documents.filter(d => canUserAction(d));
+            tbody.innerHTML = pending.length ? pending.map(d => {
+                const dateDisplay = formatDocDate(d.createdAt || d.id);
+                return `
+                    <tr class="border-b border-panel">
+                        <td class="py-2.5 px-3">
+                            <div class="font-medium text-heading">${d.title}</div>
+                            <div class="text-[10px] text-sub font-mono mt-0.5">📅 ${dateDisplay}</div>
+                        </td>
+                        <td class="py-2.5 px-3 uppercase text-premium-gold">${d.docType}</td>
+                        <td class="py-2.5 px-3">${d.status}</td>
+                        <td class="py-2.5 px-3 text-right"><button type="button" onclick="openPreview('${d.id}')" class="bg-premium-gold text-black px-3 py-1 rounded font-bold">Otorisasi</button></td>
+                    </tr>`;
+            }).join('') : `<tr><td colspan="4" class="py-4 text-center text-sub">Tidak ada dokumen.</td></tr>`;
+        }
+
+        function updateStatistics() {
+            document.getElementById('stat-total').innerText = documents.length;
+            document.getElementById('stat-process').innerText = documents.filter(d => !d.isCompleted && !d.status?.startsWith('Selesai') && d.step > 0).length;
+            document.getElementById('stat-action').innerText = documents.filter(d => canUserAction(d)).length;
+            document.getElementById('stat-completed').innerText = documents.filter(d => d.isCompleted || d.status?.startsWith('Selesai')).length;
+            document.getElementById('stat-rejected').innerText = documents.filter(d => d.step === 0).length;
+            document.getElementById('badge-pending-count').innerText = documents.filter(d => canUserAction(d)).length;
+        }
+
+        async function openPreview(id) {
+            activeDocId = id; placedStamps = [];
+            const doc = documents.find(d => d.id === id);
+            document.getElementById('modal-title').innerText = `Review: ${doc.title}`;
+            
+            const previewModal = document.getElementById('preview-modal');
+            previewModal.classList.remove('hidden');
+            
+            const mobileBar = document.getElementById('mobile-pdf-action-bar');
+            if (mobileBar) mobileBar.style.display = window.innerWidth <= 767 ? 'flex' : 'none';
+
+            const userAlreadyApproved = (doc.approvedUsers || []).includes(currentUser.username);
+            const isCompleted = doc.isCompleted || doc.status?.startsWith('Selesai') || (userAlreadyApproved && !canUserAction(doc));
+            const stampButtonsDesk = document.getElementById('desktop-stamp-buttons-wrapper');
+            const insightButtonsDesk = document.getElementById('desktop-insight-buttons-wrapper');
+            const actionContainerDesk = document.getElementById('desktop-action-container');
+            const mobileActionPanel = document.getElementById('mobile-bottom-action-panel');
+
+            if (isCompleted && !canUserAction(doc)) {
+                if(stampButtonsDesk) stampButtonsDesk.classList.add('hidden');
+                if(insightButtonsDesk) insightButtonsDesk.classList.add('hidden');
+                const completionMsg = (doc.isCompleted || doc.status?.startsWith('Selesai')) ? '✅ Dokumen Telah Selesai (Fully Approved)' : '✅ Anda telah menyetujui dokumen ini';
+                if(actionContainerDesk) {
+                    actionContainerDesk.innerHTML = `
+                        <div class="p-3 bg-emerald-950/60 border border-emerald-800 text-emerald-300 rounded-xl text-center space-y-2">
+                            <p class="font-bold">${completionMsg}</p>
+                        </div>
+                    `;
+                }
+                if(mobileActionPanel) {
+                    mobileActionPanel.innerHTML = `
+                        <div class="p-2 bg-emerald-950/60 border border-emerald-800 text-emerald-300 text-center space-y-1">
+                            <p class="font-bold text-[10px]">${completionMsg}</p>
+                        </div>
+                    `;
+                }
+            } else {
+                if(stampButtonsDesk) stampButtonsDesk.classList.remove('hidden');
+                if(insightButtonsDesk) insightButtonsDesk.classList.remove('hidden');
+                
+                if(actionContainerDesk) {
+                    actionContainerDesk.innerHTML = `
+                        <label class="flex items-start gap-2 cursor-pointer text-[11px] text-heading leading-snug bg-input p-2.5 rounded-xl border border-panel">
+                            <input type="checkbox" id="approval-checkbox" onchange="toggleApprovalButtonState()" class="accent-premium-gold w-4 h-4 mt-0.5 shrink-0">
+                            <span>Dokumen telah saya baca dan bubuhkan paraf/tanda tangan</span>
+                        </label>
+                        <div class="space-y-2">
+                            <button type="button" onclick="processApproval('approve')" id="btn-approve-action" disabled class="w-full py-2 bg-gray-600 text-gray-300 rounded-lg text-xs font-bold cursor-not-allowed">✅ Setujui & Stempel TTD</button>
+                            <button type="button" onclick="openRejectModal()" id="btn-reject-action" class="w-full py-1.5 bg-transparent border border-rose-800 text-rose-300 rounded-lg text-xs font-semibold">❌ Tolak Dokumen</button>
+                        </div>
+                    `;
+                }
+                if(mobileActionPanel) {
+                    mobileActionPanel.innerHTML = `
+                        <div class="flex items-center justify-between">
+                            <span class="text-[9px] font-bold text-premium-gold uppercase">CATATAN & OTORISASI</span>
+                            <span id="user-ink-badge-mob" class="text-[8px] px-1.5 py-0.2 rounded font-bold border border-panel text-heading">Warna Anda</span>
+                        </div>
+                        <div id="doc-comments-container-mob" class="bg-input/80 rounded-lg p-1.5 h-10 overflow-y-auto space-y-1 border border-panel text-[9px]"></div>
+                        <div class="flex gap-1">
+                            <input type="text" id="new-comment-input-mob" placeholder="Tulis catatan..." class="flex-1 bg-input border border-panel rounded px-2 py-0.5 text-[9px] text-heading outline-none">
+                            <button type="button" onclick="postDocumentCommentMobile()" class="bg-panel hover:bg-premium-gold hover:text-regal-black text-heading px-2 py-0.5 rounded text-[9px] font-bold">Kirim</button>
+                        </div>
+                        <div class="space-y-1">
+                            <label class="flex items-center gap-1.5 cursor-pointer text-[9px] text-heading bg-input p-1 rounded border border-panel">
+                                <input type="checkbox" id="approval-checkbox-mob" onchange="toggleApprovalButtonState()" class="accent-premium-gold w-3 h-3 shrink-0">
+                                <span>Dokumen telah dibaca & distempel paraf/tanda tangan</span>
+                            </label>
+                            <div class="grid grid-cols-2 gap-1.5" id="mobile-action-buttons-wrapper">
+                                <button type="button" onclick="processApproval('approve')" id="btn-approve-action-mob" disabled class="py-1 bg-gray-600 text-gray-300 rounded text-[9px] font-bold cursor-not-allowed">✅ Setujui</button>
+                                <button type="button" onclick="openRejectModal()" id="btn-reject-action-mob" class="py-1 bg-rose-950 border border-rose-800 text-rose-300 rounded text-[9px] font-semibold">❌ Tolak</button>
+                            </div>
+                        </div>
+                    `;
+                }
+
+                ['approval-checkbox', 'approval-checkbox-mob'].forEach(elId => {
+                    const cb = document.getElementById(elId);
+                    if(cb) cb.checked = false;
+                });
+                toggleApprovalButtonState();
+            }
+
+            renderCommentsUI();
+
+            if (doc.fileData) {
+                const stackContainer = document.getElementById('pdf-pages-stack-container');
+                const scrollView = document.getElementById('pdf-scroll-view');
+                const previewSession = ++pdfPreviewSession;
+
+                if (pdfPageObserver) {
+                    pdfPageObserver.disconnect();
+                    pdfPageObserver = null;
+                }
+                if (loadedPdfDocument) {
+                    try { loadedPdfDocument.destroy(); } catch (_) {}
+                    loadedPdfDocument = null;
+                }
+
+                stackContainer.innerHTML = '<div id="pdf-loading-status" class="text-premium-gold text-center py-10 font-mono text-xs">Menghubungkan ke penyimpanan PDF...</div>';
+
+                try {
+                    let pdfInitData = doc.fileData;
+                    if (typeof doc.fileData === 'string' && doc.fileData.startsWith('data:application/pdf;base64,')) {
+                        const base64Str = doc.fileData.split(',')[1];
+                        const binaryStr = atob(base64Str);
+                        const bytes = new Uint8Array(binaryStr.length);
+                        for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
+                        pdfInitData = { data: bytes };
+                    } else if (typeof doc.fileData === 'string' && /^https?:\/\//i.test(doc.fileData)) {
+                        // Supabase: gunakan Worker sebagai proxy agar Range dan header
+                        // Content-Range dapat diteruskan secara konsisten melewati CORS.
+                        // Cloudinary dan URL lama tanpa metadata tetap memakai URL asal.
+                        let pdfUrl = doc.fileData;
+                        let pdfHttpHeaders = undefined;
+
+                        if (doc.storageType === 'supabase' && doc.storageBucket && doc.storagePath) {
+                            if (!auth.currentUser) {
+                                throw new Error('Sesi login tidak tersedia untuk membaca PDF Supabase. Silakan login ulang.');
+                            }
+                            const idToken = await auth.currentUser.getIdToken();
+                            const proxyUrl = new URL(`${KDP_STORAGE_DELETE_ENDPOINT}/supabase-file`);
+                            proxyUrl.searchParams.set('bucket', doc.storageBucket);
+                            proxyUrl.searchParams.set('path', doc.storagePath);
+                            pdfUrl = proxyUrl.toString();
+                            pdfHttpHeaders = { Authorization: `Bearer ${idToken}` };
+                        }
+
+                        pdfInitData = {
+                            url: pdfUrl,
+                            httpHeaders: pdfHttpHeaders,
+                            rangeChunkSize: 1024 * 1024,
+                            disableRange: false,
+                            disableStream: true,
+                            disableAutoFetch: true
+                        };
+                    }
+
+                    const loadingTask = pdfjsLib.getDocument(pdfInitData);
+                    loadedPdfDocument = await loadingTask.promise;
+                    if (previewSession !== pdfPreviewSession) return;
+
+                    totalPdfPages = loadedPdfDocument.numPages;
+                    document.getElementById('floating-page-indicator').innerText = `Halaman 1 / ${totalPdfPages}`;
+
+                    // Ambil ukuran halaman pertama untuk membuat placeholder seluruh halaman.
+                    const firstPage = await loadedPdfDocument.getPage(1);
+                    if (previewSession !== pdfPreviewSession) return;
+
+                    const containerWidth = Math.max(280, (stackContainer.clientWidth || (window.innerWidth - 10)) - 12);
+                    const firstViewport = firstPage.getViewport({ scale: 1 });
+                    const cssScale = containerWidth / firstViewport.width;
+                    const firstCssViewport = firstPage.getViewport({ scale: cssScale });
+
+                    stackContainer.innerHTML = '';
+                    const pageWrappers = [];
+
+                    for (let pageNum = 1; pageNum <= totalPdfPages; pageNum++) {
+                        const wrapper = document.createElement('div');
+                        wrapper.className = 'pdf-page-canvas-wrapper';
+                        wrapper.id = `pdf-page-wrapper-${pageNum}`;
+                        wrapper.dataset.pageNumber = String(pageNum);
+                        wrapper.dataset.renderState = 'waiting';
+                        wrapper.style.width = `${Math.floor(firstCssViewport.width)}px`;
+                        wrapper.style.height = `${Math.floor(firstCssViewport.height)}px`;
+                        wrapper.style.maxWidth = '100%';
+                        wrapper.style.overflow = 'hidden';
+
+                        const placeholder = document.createElement('div');
+                        placeholder.className = 'pdf-page-loading-placeholder';
+                        placeholder.style.cssText = 'width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:#a3a3a3;background:#fff;font:11px sans-serif;';
+                        placeholder.textContent = `Halaman ${pageNum} · menunggu dirender`;
+
+                        const layer = document.createElement('div');
+                        layer.id = `stamps-layer-page-${pageNum}`;
+                        layer.className = 'absolute inset-0 z-30 stamps-layer-container';
+
+                        wrapper.appendChild(placeholder);
+                        wrapper.appendChild(layer);
+                        stackContainer.appendChild(wrapper);
+                        pageWrappers.push(wrapper);
+                    }
+
+                    async function renderPdfPage(pageNum) {
+                        if (previewSession !== pdfPreviewSession) return;
+                        const wrapper = pageWrappers[pageNum - 1];
+                        if (!wrapper || wrapper.dataset.renderState === 'rendered' || wrapper.dataset.renderState === 'rendering') return;
+
+                        wrapper.dataset.renderState = 'rendering';
+                        try {
+                            const page = pageNum === 1 ? firstPage : await loadedPdfDocument.getPage(pageNum);
+                            if (previewSession !== pdfPreviewSession) return;
+
+                            const pageBaseViewport = page.getViewport({ scale: 1 });
+                            const pageCssScale = containerWidth / pageBaseViewport.width;
+                            const cssViewport = page.getViewport({ scale: pageCssScale });
+                            // Batasi pixel ratio agar preview tidak membuat canvas terlalu besar.
+                            const pixelRatio = Math.min(1.5, Math.max(1, window.devicePixelRatio || 1));
+                            const renderViewport = page.getViewport({ scale: pageCssScale * pixelRatio });
+
+                            wrapper.style.width = `${Math.floor(cssViewport.width)}px`;
+                            wrapper.style.height = `${Math.floor(cssViewport.height)}px`;
+                            const oldPlaceholder = wrapper.querySelector('.pdf-page-loading-placeholder');
+                            if (oldPlaceholder) oldPlaceholder.remove();
+
+                            const canvas = document.createElement('canvas');
+                            canvas.width = Math.max(1, Math.floor(renderViewport.width));
+                            canvas.height = Math.max(1, Math.floor(renderViewport.height));
+                            canvas.style.width = `${Math.floor(cssViewport.width)}px`;
+                            canvas.style.height = `${Math.floor(cssViewport.height)}px`;
+                            canvas.style.display = 'block';
+
+                            const layer = document.getElementById(`stamps-layer-page-${pageNum}`);
+                            wrapper.insertBefore(canvas, layer || null);
+
+                            const context = canvas.getContext('2d', { alpha: false });
+                            await page.render({ canvasContext: context, viewport: renderViewport }).promise;
+                            if (previewSession !== pdfPreviewSession) return;
+
+                            wrapper.dataset.renderState = 'rendered';
+                            setupCanvasMouseInteractions(wrapper, pageNum);
+                            renderAllStampsLayers();
+                        } catch (pageError) {
+                            wrapper.dataset.renderState = 'error';
+                            const placeholder = wrapper.querySelector('.pdf-page-loading-placeholder') || document.createElement('div');
+                            placeholder.className = 'pdf-page-loading-placeholder';
+                            placeholder.style.cssText = 'padding:16px;text-align:center;color:#e11d48;background:#fff;font:11px sans-serif;';
+                            placeholder.textContent = `Gagal merender halaman ${pageNum}: ${pageError.message}`;
+                            if (!placeholder.parentNode) wrapper.prepend(placeholder);
+                            console.error(`Gagal merender halaman PDF ${pageNum}:`, pageError);
+                        }
+                    }
+
+                    // Render halaman pertama terlebih dahulu agar pengguna segera dapat membaca.
+                    const status = document.getElementById('pdf-loading-status');
+                    if (status) status.remove();
+                    await renderPdfPage(1);
+                    if (previewSession !== pdfPreviewSession) return;
+
+                    // Halaman lain baru dirender saat mendekati area yang terlihat.
+                    if ('IntersectionObserver' in window) {
+                        pdfPageObserver = new IntersectionObserver((entries) => {
+                            entries.forEach(entry => {
+                                if (entry.isIntersecting) {
+                                    const pageNum = Number(entry.target.dataset.pageNumber);
+                                    renderPdfPage(pageNum);
+                                    pdfPageObserver?.unobserve(entry.target);
+                                }
+                            });
+                        }, {
+                            root: scrollView,
+                            rootMargin: '1000px 0px',
+                            threshold: 0.01
+                        });
+
+                        pageWrappers.slice(1).forEach(wrapper => pdfPageObserver.observe(wrapper));
+                    } else {
+                        // Fallback browser lama: render bertahap dengan jeda agar UI tetap responsif.
+                        for (let pageNum = 2; pageNum <= totalPdfPages; pageNum++) {
+                            if (previewSession !== pdfPreviewSession) break;
+                            await renderPdfPage(pageNum);
+                            await new Promise(resolve => setTimeout(resolve, 0));
+                        }
+                    }
+
+                    renderAllStampsLayers();
+                } catch (err) {
+                    console.error('Error loading PDF preview:', err);
+                    stackContainer.innerHTML = `<div class="text-rose-500 text-center py-10 text-xs">Gagal memuat pratinjau: ${err.message}</div>`;
+                }
+            }
+        }
+
+        function handlePdfScrollSync(scrollView) {
+            const wrappers = scrollView.querySelectorAll('.pdf-page-canvas-wrapper');
+            let activePage = 1;
+            const scrollMiddle = scrollView.scrollTop + scrollView.clientHeight / 2;
+
+            wrappers.forEach((w, idx) => {
+                if (w.offsetTop <= scrollMiddle && (w.offsetTop + w.offsetHeight) > scrollMiddle) {
+                    activePage = idx + 1;
+                }
+            });
+            document.getElementById('floating-page-indicator').innerText = `Halaman ${activePage} / ${totalPdfPages}`;
+        }
+
+        function closeModal() {
+            document.getElementById('preview-modal').classList.add('hidden');
+            pdfPreviewSession++;
+            if (pdfPageObserver) {
+                pdfPageObserver.disconnect();
+                pdfPageObserver = null;
+            }
+            if (loadedPdfDocument) {
+                try { loadedPdfDocument.destroy(); } catch (_) {}
+                loadedPdfDocument = null;
+            }
+            const mobileBar = document.getElementById('mobile-pdf-action-bar');
+            if (mobileBar) mobileBar.style.display = 'none';
+        }
+
+
+        // Mengambil byte PDF asli dari berbagai sumber penyimpanan.
+        // Preview PDF.js dapat membaca URL secara langsung, sedangkan PDF-Lib
+        // membutuhkan byte/ArrayBuffer untuk menempelkan stempel permanen.
+        async function getPdfBytesForApproval(doc) {
+            const source = doc && doc.fileData;
+            if (!source) throw new Error('Sumber file PDF tidak ditemukan pada dokumen.');
+
+            if (source instanceof Uint8Array) return source;
+            if (source instanceof ArrayBuffer) return new Uint8Array(source);
+
+            if (typeof source === 'string') {
+                const dataUrlMatch = source.match(/^data:application\/pdf;base64,([\s\S]+)$/i);
+                if (dataUrlMatch) {
+                    const binary = atob(dataUrlMatch[1]);
+                    const bytes = new Uint8Array(binary.length);
+                    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+                    return bytes;
+                }
+
+                if (/^https?:\/\//i.test(source)) {
+                    const response = await fetch(source);
+                    if (!response.ok) {
+                        throw new Error(`Gagal mengunduh PDF dari ${doc.storageType || 'cloud'} (HTTP ${response.status}).`);
+                    }
+                    const bytes = new Uint8Array(await response.arrayBuffer());
+                    if (bytes.length < 5 || String.fromCharCode(...bytes.slice(0, 5)) !== '%PDF-') {
+                        throw new Error('File yang diterima bukan PDF valid. Periksa URL dan akses penyimpanan dokumen.');
+                    }
+                    return bytes;
+                }
+
+                throw new Error('Format sumber PDF tidak dikenali.');
+            }
+
+            throw new Error('Format data PDF tidak didukung.');
+        }
+
+        let approvalInProgress = false;
+
+        function setApprovalProgress(message, title = 'Memproses persetujuan...') {
+            const overlay = document.getElementById('approval-progress-overlay');
+            const titleEl = document.getElementById('approval-progress-title');
+            const messageEl = document.getElementById('approval-progress-message');
+            if (titleEl) titleEl.textContent = title;
+            if (messageEl) messageEl.textContent = message;
+        }
+
+        async function processApproval(action) {
+            if (approvalInProgress) return;
+            const doc = documents.find(d => d.id === activeDocId);
+            if (!doc || placedStamps.length === 0) {
+                alert('Tempatkan kelengkapan stempel/tanda tangan terlebih dahulu!');
+                return;
+            }
+
+            approvalInProgress = true;
+            const overlay = document.getElementById('approval-progress-overlay');
+            const buttons = ['btn-approve-action', 'btn-approve-action-mob'];
+            const originalLabels = {};
+            buttons.forEach(id => {
+                const button = document.getElementById(id);
+                if (!button) return;
+                originalLabels[id] = button.innerHTML;
+                button.disabled = true;
+                button.classList.add('opacity-70', 'cursor-wait');
+                button.innerHTML = '<span class="inline-flex items-center justify-center gap-2"><span class="approval-button-spinner"></span> Memproses...</span>';
+            });
+            document.querySelectorAll('.approval-button-spinner').forEach(el => {
+                el.style.cssText = 'display:inline-block;width:12px;height:12px;border:2px solid rgba(255,255,255,.35);border-top-color:#fff;border-radius:50%;animation:approval-spin .8s linear infinite;';
+            });
+            ['approval-checkbox', 'approval-checkbox-mob'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.disabled = true;
+            });
+
+            if (overlay) overlay.classList.add('active');
+            setApprovalProgress('Mengambil file PDF dan menyiapkan proses stamping.');
+            try {
+                await processApprovalCore(action);
+            } catch (error) {
+                console.error('Kesalahan tidak tertangani pada proses approval:', error);
+                alert(`Terjadi kesalahan saat memproses persetujuan: ${error.message || error}`);
+            } finally {
+                if (overlay) overlay.classList.remove('active');
+                approvalInProgress = false;
+                buttons.forEach(id => {
+                    const button = document.getElementById(id);
+                    if (!button) return;
+                    button.innerHTML = originalLabels[id] || (id.endsWith('-mob') ? '✅ Setujui' : '✅ Setujui & Stempel TTD');
+                    button.classList.remove('opacity-70', 'cursor-wait');
+                });
+                ['approval-checkbox', 'approval-checkbox-mob'].forEach(id => {
+                    const el = document.getElementById(id);
+                    if (el) el.disabled = false;
+                });
+                if (typeof toggleApprovalButtonState === 'function') toggleApprovalButtonState();
+            }
+        }
+
+        async function processApprovalCore(action) {
+            const doc = documents.find(d => d.id === activeDocId);
+            if (!doc || placedStamps.length === 0) { alert('Tempatkan kelengkapan stempel/tanda tangan terlebih dahulu!'); return; }
+
+            let pdfDoc;
+            setApprovalProgress('Mengunduh dan membaca file PDF. Untuk dokumen besar, proses ini dapat memerlukan waktu.', 'Tahap 1/4 · Membaca PDF');
+            try {
+                const pdfBytes = await getPdfBytesForApproval(doc);
+                pdfDoc = await PDFLib.PDFDocument.load(pdfBytes);
+            } catch (loadError) {
+                console.error('Gagal memuat PDF untuk proses approval:', loadError);
+                alert(`Persetujuan belum dapat diproses: ${loadError.message || loadError}`);
+                return;
+            }
+            setApprovalProgress('Membubuhkan paraf, tanda tangan, tanggal, dan anotasi pada halaman PDF.', 'Tahap 2/4 · Membubuhkan stempel');
+            const pages = pdfDoc.getPages();
+            const now = new Date();
+            const dateStr = `${String(now.getDate()).padStart(2,'0')}/${String(now.getMonth()+1).padStart(2,'0')}/${now.getFullYear()}`;
+
+            for (let s of placedStamps) {
+                const targetPage = pages[s.page - 1];
+                const { width: pageWidth, height: pageHeight } = targetPage.getSize();
+                
+                const wrapper = document.getElementById(`pdf-page-wrapper-${s.page}`);
+                if (!wrapper) continue;
+                const wrapperWidth = wrapper.clientWidth;
+                const wrapperHeight = wrapper.clientHeight;
+
+                const scaleX = pageWidth / wrapperWidth;
+                const scaleY = pageHeight / wrapperHeight;
+
+                const pdfX = s.x * scaleX;
+                const pdfW = s.width * scaleX;
+                const pdfH = s.height * scaleY;
+                const pdfY = pageHeight - ((s.y + s.height) * scaleY);
+
+                if (s.type === 'ttd') {
+                    const authorUser = Object.values(usersDatabase).find(u => u.fullname === s.author) || currentUser;
+                    const src = authorUser?.ttdPng;
+
+                    if (src) {
+                        try {
+                            const imgBytes = await fetch(src).then(res => res.arrayBuffer());
+                            const embedded = await pdfDoc.embedPng(imgBytes);
+                            
+                            const imgDims = embedded.scale(1);
+                            const imgAspect = imgDims.width / imgDims.height;
+                            
+                            let drawW = pdfW * 0.65;
+                            let drawH = pdfH;
+                            const boxAspect = drawW / drawH;
+                            
+                            if (imgAspect > boxAspect) {
+                                drawH = drawW / imgAspect;
+                            } else {
+                                drawW = drawH * imgAspect;
+                            }
+
+                            targetPage.drawImage(embedded, { 
+                                x: pdfX + (pdfW * 0.10), 
+                                y: pdfY + (pdfH - drawH) / 2, 
+                                width: drawW, 
+                                height: drawH 
+                            });
+                        } catch(e) {
+                            console.error('Gagal embed TTD PNG:', e);
+                        }
+                    } else {
+                        const font = await pdfDoc.embedFont(PDFLib.StandardFonts.HelveticaBold);
+                        targetPage.drawText(`(TTD) ${authorUser.fullname}`, {
+                            x: pdfX, y: pdfY + (pdfH / 2), size: 10 * scaleX, font: font, color: PDFLib.rgb(0, 0, 0.8)
+                        });
+                    }
+
+                    const font = await pdfDoc.embedFont(PDFLib.StandardFonts.HelveticaBold);
+                    targetPage.drawText(dateStr, {
+                        x: pdfX + (pdfW * 0.42),
+                        y: pdfY + (pdfH / 2) - 4,
+                        size: 9 * scaleX,
+                        font: font,
+                        color: PDFLib.rgb(0, 0, 0)
+                    });
+                } else if (s.type === 'paraf') {
+                    const authorUser = Object.values(usersDatabase).find(u => u.fullname === s.author) || currentUser;
+                    const src = authorUser?.parafPng;
+                    if (src) {
+                        try {
+                            const imgBytes = await fetch(src).then(res => res.arrayBuffer());
+                            const embedded = await pdfDoc.embedPng(imgBytes);
+                            
+                            const imgDims = embedded.scale(1);
+                            const imgAspect = imgDims.width / imgDims.height;
+                            let drawW = pdfW;
+                            let drawH = pdfH;
+                            const boxAspect = drawW / drawH;
+                            
+                            if (imgAspect > boxAspect) {
+                                drawH = drawW / imgAspect;
+                            } else {
+                                drawW = drawH * imgAspect;
+                            }
+
+                            targetPage.drawImage(embedded, { 
+                                x: pdfX + (pdfW - drawW)/2, 
+                                y: pdfY + (pdfH - drawH)/2, 
+                                width: drawW, 
+                                height: drawH 
+                            });
+                        } catch(e) {
+                            console.error('Gagal embed Paraf PNG:', e);
+                        }
+                    } else {
+                        const font = await pdfDoc.embedFont(PDFLib.StandardFonts.HelveticaBold);
+                        targetPage.drawText(authorUser.init || 'PF', {
+                            x: pdfX + 5, y: pdfY + (pdfH / 3), size: 14 * scaleX, font: font, color: PDFLib.rgb(0, 0, 0.8)
+                        });
+                    }
+                } else if (s.type === 'redline') {
+                    targetPage.drawLine({
+                        start: { x: pdfX, y: pdfY + pdfH / 2 },
+                        end: { x: pdfX + pdfW, y: pdfY + pdfH / 2 },
+                        thickness: 2 * scaleX,
+                        color: PDFLib.rgb(0.15, 0.39, 0.92)
+                    });
+                } else if (s.type === 'check' || s.type === 'cross') {
+                    const font = await pdfDoc.embedFont(PDFLib.StandardFonts.HelveticaBold);
+                    targetPage.drawText(s.type === 'check' ? '✔' : '✖', {
+                        x: pdfX, y: pdfY + (pdfH / 4), size: 24 * scaleX, font: font, color: PDFLib.rgb(0, 0, 0)
+                    });
+                } else if (s.type === 'highlight') {
+                    targetPage.drawRectangle({
+                        x: pdfX, y: pdfY, width: pdfW, height: pdfH,
+                        color: PDFLib.rgb(0.98, 0.8, 0.08), opacity: 0.4
+                    });
+                } else if (s.type === 'text_custom') {
+                    const font = await pdfDoc.embedFont(PDFLib.StandardFonts.Helvetica);
+                    targetPage.drawText(s.text, {
+                        x: pdfX, y: pdfY + (pdfH / 4),
+                        size: parseInt(s.fontSize || 12) * scaleX,
+                        font: font,
+                        color: PDFLib.rgb(0.1, 0.1, 0.1),
+                    });
+                }
+            }
+
+            setApprovalProgress('Menyusun dan menyiapkan PDF final setelah stempel dipasang.', 'Tahap 3/4 · Menyiapkan PDF final');
+            const bytes = await pdfDoc.save();
+            const blob = new Blob([bytes], { type: 'application/pdf' });
+            const approvedFile = new File(
+                [blob],
+                `${(doc.title || 'dokumen').replace(/\\.pdf$/i, '')}_approved.pdf`,
+                { type: 'application/pdf', lastModified: Date.now() }
+            );
+
+            // Simpan PDF hasil stempel ke cloud sesuai routing ukuran file.
+            // Isi PDF tidak disimpan sebagai Base64 di localStorage.
+            setApprovalProgress('Mengunggah PDF hasil stempel ke penyimpanan cloud. Jangan tutup halaman ini.', 'Tahap 4/4 · Mengunggah dan menyimpan');
+            const previousAsset = getDocAssets(doc)[0] || null;
+            let uploadedApprovedAsset;
+            try {
+                uploadedApprovedAsset = await handleFileRouting(approvedFile, 'documents/approved');
+            } catch (uploadError) {
+                console.error('Gagal mengunggah PDF hasil approval:', uploadError);
+                alert(`PDF sudah diproses, tetapi gagal disimpan ke cloud: ${uploadError.message || uploadError}`);
+                return;
+            }
+
+            const previousFileMetadata = {
+                fileData: doc.fileData,
+                storageType: doc.storageType,
+                storagePath: doc.storagePath,
+                storageBucket: doc.storageBucket,
+                storagePublicId: doc.storagePublicId,
+                fileSizeMB: doc.fileSizeMB,
+                approvedUsers: [...(doc.approvedUsers || [])],
+                approvedStaffList: [...(doc.approvedStaffList || [])],
+                kabagHasVerified: doc.kabagHasVerified,
+                step: doc.step,
+                status: doc.status,
+                isCompleted: doc.isCompleted,
+                completedAt: doc.completedAt,
+                lastUpdated: doc.lastUpdated
+            };
+            doc.fileData = uploadedApprovedAsset.fileData;
+            doc.storageType = uploadedApprovedAsset.storageType;
+            doc.storagePath = uploadedApprovedAsset.storagePath;
+            doc.storageBucket = uploadedApprovedAsset.storageBucket;
+            doc.storagePublicId = uploadedApprovedAsset.storagePublicId;
+            doc.fileSizeMB = uploadedApprovedAsset.sizeMB;
+
+            if (!doc.approvedUsers) doc.approvedUsers = [];
+            if (!doc.approvedUsers.includes(currentUser.username)) {
+                doc.approvedUsers.push(currentUser.username);
+            }
+
+            const pos = currentUser.position;
+            const type = doc.docType;
+
+            // Logika Alur Spesifik Sesuai Permintaan Anda:
+            if (type === 'kdp' || type === 'pihak_ketiga') {
+                if (pos === 'staff_kdp') {
+                    if (!doc.approvedStaffList) doc.approvedStaffList = [];
+                    if (!doc.approvedStaffList.includes(currentUser.username)) {
+                        doc.approvedStaffList.push(currentUser.username);
+                    }
+                }
+
+                const staffCount = (doc.approvedStaffList || []).length;
+                if (doc.step === 1) {
+                    if (staffCount >= 2) {
+                        doc.step = 2;
+                        doc.status = 'Tahap 2: Menunggu Verifikasi KDP Kabag (Staff ke-3 masih bisa review)';
+                    } else {
+                        doc.status = `Tahap 1: Menunggu TTD Staff KDP (${staffCount}/2 Wajib)`;
+                    }
+                } else if (pos === 'kabag') {
+                    doc.kabagHasVerified = true;
+                    doc.step = 3;
+                    doc.status = 'Tahap 3: Menunggu Acc Pimpinan MR';
+                } else if (pos === 'pimpinan') {
+                    doc.step = 4;
+                    doc.status = 'Selesai (Fully Approved)';
+                    doc.isCompleted = true; doc.completedAt = Date.now();
+                }
+            } else if (type === 'kasir') {
+                if (doc.step === 1) { doc.step = 2; doc.status = 'Tahap 2: Menunggu KDP Kabag'; }
+                else if (doc.step === 2) { doc.kabagHasVerified = true; doc.step = 3; doc.status = 'Tahap 3: Menunggu Pimpinan MR'; }
+                else if (doc.step === 3) { doc.step = 4; doc.status = 'Selesai (Fully Approved)'; doc.isCompleted = true; doc.completedAt = Date.now(); }
+            } else if (type === 'admkdp') {
+                if (doc.step === 1) { doc.step = 2; doc.status = 'Tahap 2: Menunggu KDP Kabag'; }
+                else if (doc.step === 2) { doc.kabagHasVerified = true; doc.step = 3; doc.status = 'Tahap 3: Menunggu Pimpinan MR'; }
+                else if (doc.step === 3) { doc.step = 4; doc.status = 'Selesai (Fully Approved)'; doc.isCompleted = true; doc.completedAt = Date.now(); }
+            } else if (type === 'lain_lain') {
+                if (pos === 'staff_kdp') {
+                    if (!doc.approvedStaffList) doc.approvedStaffList = [];
+                    if (!doc.approvedStaffList.includes(currentUser.username)) {
+                        doc.approvedStaffList.push(currentUser.username);
+                    }
+                }
+                if (pos === 'kabag') {
+                    doc.kabagHasVerified = true;
+                    doc.step = 3;
+                    doc.status = 'Tahap 3: Menunggu Pimpinan MR';
+                } else if (pos === 'pimpinan') {
+                    doc.step = 4;
+                    doc.status = 'Selesai (Fully Approved)';
+                    doc.isCompleted = true; doc.completedAt = Date.now();
+                } else if (!doc.kabagHasVerified) {
+                    doc.status = 'Menunggu Review Staff KDP (Opsional) atau KDP Kabag';
+                }
+            }
+
+            doc.lastUpdated = Date.now();
+
+            // Simpan status dan URL PDF terbaru ke Firestore sebelum menghapus file lama.
+            setApprovalProgress('Menyimpan status persetujuan dan alamat PDF terbaru ke database.');
+            try {
+                await db.collection('documents').doc(doc.id).set(doc);
+                cacheDocumentsLocally();
+            } catch (persistError) {
+                Object.assign(doc, previousFileMetadata);
+                try {
+                    await deleteCloudAsset({
+                        storageType: uploadedApprovedAsset.storageType,
+                        storagePath: uploadedApprovedAsset.storagePath,
+                        storageBucket: uploadedApprovedAsset.storageBucket,
+                        publicId: uploadedApprovedAsset.storagePublicId,
+                        url: uploadedApprovedAsset.fileData
+                    });
+                } catch (cleanupError) {
+                    console.warn('Gagal membersihkan PDF approval yang tidak tersimpan:', cleanupError);
+                }
+                console.error('Gagal menyimpan status approval ke Firestore:', persistError);
+                alert(`Persetujuan gagal disimpan. Status dokumen dipulihkan: ${persistError.message || persistError}`);
+                return;
+            }
+
+            // File versi lama dihapus hanya setelah dokumen baru berhasil tersimpan.
+            if (previousAsset && previousAsset.url !== uploadedApprovedAsset.fileData) {
+                try {
+                    await deleteCloudAsset(previousAsset);
+                } catch (cleanupError) {
+                    console.warn('PDF versi sebelumnya belum terhapus dari cloud:', cleanupError);
+                }
+            }
+
+            recordLog(`Menyetujui dokumen: ${doc.title} (${doc.status})`);
+            
+            // Kirim notifikasi ke approver berikutnya
+            notifyNextApprovers(type, doc.step, doc.title, doc.id);
+
+            updateStatistics();
+            renderSummaryTable();
+            renderPendingDocuments();
+            showToast('Dokumen berhasil disetujui & distempel permanen!');
+            
+            setTimeout(() => {
+                openPreview(doc.id);
+            }, 100);
+        }
+        function openRejectModal() { document.getElementById('reject-reason-modal').classList.remove('hidden'); }
+        async function submitDocumentRejection() {
+            const reasonInput = document.getElementById('reject-reason-input');
+            const reason = reasonInput ? reasonInput.value.trim() : '';
+            if (!reason) { alert('Isi alasan penolakan.'); return; }
+
+            const doc = documents.find(d => String(d.id) === String(activeDocId));
+            if (!doc) { alert('Dokumen tidak ditemukan. Muat ulang daftar dokumen.'); return; }
+
+            // Simpan salinan agar perubahan lokal dapat dibatalkan jika Firestore gagal.
+            const previousDoc = { ...doc };
+            const rejectedAt = Date.now();
+            doc.status = `Ditolak: ${reason}`;
+            doc.step = 0;
+            doc.isCompleted = false;
+            doc.rejectedAt = rejectedAt;
+            doc.lastUpdated = rejectedAt;
+            doc.rejectedBy = currentUser ? currentUser.username : null;
+
+            const rejectButton = document.querySelector('#reject-reason-modal button[onclick="submitDocumentRejection()"]');
+            if (rejectButton) { rejectButton.disabled = true; rejectButton.textContent = 'Menyimpan penolakan...'; }
+
+            try {
+                // PENTING: saveStateToCloud() hanya memperbarui cache browser.
+                // Sumber utama dokumen adalah koleksi Firestore "documents".
+                // Karena itu status penolakan harus ditulis ke dokumen kanonis terlebih dahulu.
+                await db.collection('documents').doc(String(doc.id)).set({
+                    status: doc.status,
+                    step: doc.step,
+                    isCompleted: false,
+                    rejectedAt: doc.rejectedAt,
+                    lastUpdated: doc.lastUpdated,
+                    rejectedBy: doc.rejectedBy,
+                    rejectionReason: reason
+                }, { merge: true });
+
+                cacheDocumentsLocally();
+                if (reasonInput) reasonInput.value = '';
+                document.getElementById('reject-reason-modal').classList.add('hidden');
+                closeModal();
+                updateStatistics();
+                renderSummaryTable();
+
+                recordLog(`Menolak dokumen "${doc.title}" dengan alasan: ${reason}`);
+                const uploaderUsername = String(doc.uploader || '').trim().split(/\s+/)[0];
+                if (uploaderUsername) {
+                    createNotification(uploaderUsername, 'Dokumen Ditolak', `Dokumen "${doc.title}" ditolak dengan alasan: ${reason}`, doc.id);
+                }
+                showToast('Dokumen berhasil ditolak dan status tersimpan di database.');
+            } catch (err) {
+                // Jangan biarkan UI menampilkan status ditolak jika server belum menyimpannya.
+                Object.assign(doc, previousDoc);
+                cacheDocumentsLocally();
+                console.error('Gagal menyimpan penolakan ke Firestore:', err);
+                alert('Penolakan belum tersimpan ke database. Status dokumen dikembalikan. Silakan coba lagi.\n\n' + (err.message || err));
+            } finally {
+                if (rejectButton) { rejectButton.disabled = false; rejectButton.textContent = 'Konfirmasi Penolakan'; }
+            }
+        }
+
+        function filterSummaryTable(type) { 
+            currentSummaryFilter = type; 
+            ['all', 'process', 'action', 'rejected', 'completed'].forEach(t => {
+                const card = document.getElementById(`card-filter-${t}`);
+                if(card) {
+                    if(t === type) {
+                        card.classList.remove('border-panel');
+                        card.classList.add('border-2', 'border-premium-gold');
+                    } else {
+                        card.classList.remove('border-2', 'border-premium-gold');
+                        card.classList.add('border', 'border-panel');
+                    }
+                }
+            });
+            renderSummaryTable(); 
+        }
+        let documentToDeleteId = null;
+
+// Fungsi untuk membuka pop-up konfirmasi
+function deleteDoc(id) { 
+    const targetDoc = documents.find(d => d.id === id);
+    if (!targetDoc) return;
+
+    documentToDeleteId = id;
+    
+    // Set teks konfirmasi dengan nama dokumen
+    document.getElementById('delete-confirm-text').innerHTML = 
+        `Apakah Anda yakin ingin menghapus dokumen <strong class="text-amber-400">"${targetDoc.title}"</strong> secara permanen?`;
+    
+    // Tampilkan modal
+    document.getElementById('delete-confirm-modal').classList.remove('hidden');
+}
+
+// Fungsi untuk menutup pop-up
+function closeDeleteModal() {
+    documentToDeleteId = null;
+    document.getElementById('delete-confirm-modal').classList.add('hidden');
+}
+
+// Event listener saat tombol "Hapus Permanen" di pop-up diklik
+document.addEventListener('DOMContentLoaded', () => {
+    const btnConfirmDelete = document.getElementById('btn-confirm-delete');
+    if (btnConfirmDelete) {
+        btnConfirmDelete.addEventListener('click', async function() {
+            if (!documentToDeleteId) return;
+
+            const id = documentToDeleteId;
+            const targetDoc = documents.find(d => d.id === id);
+            closeDeleteModal();
+
+            try {
+                await deleteDocumentEverywhere(targetDoc);
+                updateStatistics();
+                renderSummaryTable();
+                showToast('Dokumen dan file cloud berhasil dihapus.');
+            } catch (err) {
+                console.error("Gagal menghapus dokumen:", err);
+                alert('Gagal menghapus dokumen: ' + err.message);
+            }
+        });
+    }
 });
 
-self.addEventListener("install", (event) => {
-  self.skipWaiting();
-});
+    </script>
+    <!-- Custom Delete Confirmation Modal -->
+<div id="delete-confirm-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm hidden">
+    <div class="bg-gray-900 border border-amber-500/30 rounded-xl p-6 w-full max-w-md shadow-2xl text-center transform transition-all">
+        <!-- Icon Warning -->
+        <div class="w-14 h-14 bg-red-500/10 text-red-500 rounded-full flex items-center justify-center mx-auto mb-4 border border-red-500/20">
+            <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+            </svg>
+        </div>
 
-self.addEventListener("activate", (event) => {
-  event.waitUntil(self.clients.claim());
-});
+        <h3 class="text-lg font-bold text-gray-100 mb-2">Konfirmasi Penghapusan</h3>
+        <p class="text-sm text-gray-400 mb-6" id="delete-confirm-text">Apakah Anda yakin ingin menghapus dokumen ini secara permanen?</p>
 
-self.addEventListener("fetch", (event) => {
-  event.respondWith(fetch(event.request));
-});
+        <!-- Action Buttons -->
+        <div class="flex gap-3 justify-center">
+            <button onclick="closeDeleteModal()" class="px-5 py-2.5 rounded-lg border border-gray-700 bg-gray-800 hover:bg-gray-700 text-gray-300 text-sm font-medium transition-colors">
+                Batal
+            </button>
+            <button id="btn-confirm-delete" class="px-5 py-2.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm font-medium shadow-lg shadow-red-600/20 transition-all">
+                Hapus Permanen
+            </button>
+        </div>
+    </div>
+</div>
+<!-- KDP DOKU SIGN: Widget Kira Panduan Mandiri + Chat Antar Pengguna -->
+<div id="ai-chat-widget" style="position:fixed;bottom:20px;right:20px;z-index:999999;">
+  <button id="ai-chat-toggle-btn" type="button" aria-label="Buka pusat bantuan dan chat" style="position:relative;background:#d4af37;color:#111;border:none;border-radius:50%;width:56px;height:56px;font-size:24px;cursor:pointer;box-shadow:0 4px 15px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;">💬
+    <span id="chat-notification-badge" style="display:none;position:absolute;top:-5px;right:-5px;background:#e74c3c;color:white;border-radius:20px;min-width:19px;padding:2px 5px;font-size:10px;font-weight:bold;">0</span>
+  </button>
+  <div id="ai-chat-box" style="display:none;position:fixed;bottom:88px;right:20px;width:min(370px,calc(100vw - 28px));height:min(560px,calc(100vh - 120px));background:#1e1e1e;border:1px solid #444;border-radius:14px;flex-direction:column;overflow:hidden;box-shadow:0 8px 30px rgba(0,0,0,.65);z-index:1000000;">
+    <div style="background:#242424;border-bottom:1px solid #3b3b3b;">
+      <div style="padding:11px 13px;color:#fff;font-weight:700;display:flex;justify-content:space-between;align-items:center;">
+        <span>💬 Pusat Bantuan KDP DOKU SIGN</span>
+        <button type="button" id="ai-chat-close-btn" aria-label="Tutup chat" style="background:none;border:none;color:#aaa;font-size:19px;cursor:pointer;">✕</button>
+      </div>
+      <div style="display:flex;background:#191919;">
+        <button type="button" id="tab-btn-ai" onclick="switchChatTab('ai')" style="flex:1;padding:10px 5px;background:#242424;color:#d4af37;border:none;border-bottom:2px solid #d4af37;cursor:pointer;font-size:12px;font-weight:700;">📘 Panduan Kira</button>
+        <button type="button" id="tab-btn-user" onclick="switchChatTab('user')" style="flex:1;padding:10px 5px;background:#191919;color:#999;border:none;border-bottom:2px solid transparent;cursor:pointer;font-size:12px;font-weight:700;">👥 Chat User</button>
+      </div>
+    </div>
+    <div id="panel-chat-ai" style="display:flex;flex:1;min-height:0;flex-direction:column;">
+      <div style="padding:12px;background:#29251b;border-bottom:1px solid #40371f;color:#f3e6bd;font-size:12px;">
+        <strong>✨ Kira</strong> · Asisten virtual KDP DOKU SIGN<br><span style="color:#c9c0a7;">Halo! Saya Kira. Saya panduan internal KDP DOKU SIGN. Tanyakan cara mengunggah, memproses, menyetujui, mengelola, atau mengatur PDF.</span>
+      </div>
+      <div id="kira-quick-questions" style="background:#1e1e1e;border-bottom:1px solid #333;">
+        <button type="button" id="kira-quick-toggle" aria-expanded="false" style="width:100%;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:9px 11px;background:#242424;border:0;color:#d8bd62;text-align:left;cursor:pointer;font-size:10px;font-weight:700;">
+          <span><span id="kira-quick-title">PERTANYAAN PANDUAN</span> <span id="kira-quick-count" style="color:#aaa;font-weight:400;">(pilih untuk melihat)</span></span><span id="kira-quick-chevron">＋</span>
+        </button>
+        <div id="kira-quick-list" hidden style="display:none;flex-wrap:wrap;gap:6px;padding:8px 10px;max-height:112px;overflow-y:auto;"></div>
+      </div>
+      <div id="ai-chat-messages" style="display:flex;flex:1;min-height:0;overflow-y:auto;flex-direction:column;gap:9px;padding:12px;background:#1e1e1e;font-size:12px;"></div>
+      <div style="display:flex;gap:6px;padding:10px;background:#292929;border-top:1px solid #3b3b3b;">
+        <input id="ai-chat-input" type="text" maxlength="2000" placeholder="Tanyakan sesuatu kepada Kira..." onkeydown="handleAIChatKeyPress(event)" style="min-width:0;flex:1;background:#111;color:#fff;border:1px solid #444;border-radius:7px;padding:9px;font-size:12px;">
+        <button id="ai-chat-send-btn" type="button" onclick="sendMessagetoAI()" style="background:#d4af37;color:#111;border:0;border-radius:7px;padding:0 13px;font-weight:700;cursor:pointer;">Kirim</button>
+      </div>
+      <div style="padding:0 10px 8px;background:#292929;color:#888;font-size:9px;">Panduan lokal aplikasi. Tidak terhubung ke layanan AI eksternal. Jangan kirim kata sandi atau data rahasia.</div>
+    </div>
+    <div id="panel-chat-user" style="display:none;flex:1;min-height:0;flex-direction:column;">
+      <div style="padding:9px;background:#252525;border-bottom:1px solid #333;display:flex;flex-direction:column;gap:5px;">
+        <label for="user-chat-target" style="font-size:11px;color:#bbb;">Percakapan / Kirim ke:</label>
+        <select id="user-chat-target" style="background:#111;color:#fff;border:1px solid #444;padding:8px;border-radius:6px;font-size:12px;">
+          <option value="__broadcast__">📢 Semua Pengguna (Broadcast)</option>
+        </select>
+      </div>
+      <div id="chat-conversation-section" style="background:#202020;border-bottom:1px solid #333;flex:0 0 auto;">
+        <button type="button" id="chat-conversation-toggle" aria-expanded="false" style="width:100%;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:9px 11px;background:#242424;border:0;color:#d8bd62;text-align:left;cursor:pointer;font-size:10px;font-weight:700;">
+          <span>👥 DAFTAR PENGGUNA <span id="chat-conversation-unread-count" style="color:#ff7777;font-weight:600;">(0 belum dibaca)</span></span><span id="chat-conversation-chevron">＋</span>
+        </button>
+        <div id="chat-conversation-list" hidden style="display:none;max-height:118px;overflow-y:auto;background:#202020;padding:5px 8px;"></div>
+      </div>
+      <div id="user-chat-messages" style="display:flex;flex:1;min-height:0;flex-direction:column;gap:8px;padding:10px;overflow-y:auto;font-size:12px;background:#1e1e1e;">
+        <div style="color:#888;text-align:center;margin:auto;">Pilih penerima untuk memulai percakapan.</div>
+      </div>
+      <div style="display:flex;gap:6px;padding:10px;background:#292929;border-top:1px solid #3b3b3b;">
+        <input type="text" id="user-chat-input" maxlength="3000" placeholder="Tulis pesan..." style="min-width:0;flex:1;background:#111;border:1px solid #444;color:#fff;padding:9px;border-radius:7px;font-size:12px;">
+        <button id="user-chat-send-btn" type="button" onclick="sendUserMessage()" style="background:#d4af37;border:0;color:#111;padding:7px 13px;border-radius:7px;cursor:pointer;font-weight:700;">Kirim</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ================= KIRA PANDUAN MANDIRI + REALTIME USER CHAT =================
+// Kira berjalan lokal di browser berdasarkan panduan dan aturan aplikasi. Tidak memakai API AI eksternal.
+let chatMessageUnsub = null;
+let chatPrivateNotifUnsub = null;
+let chatBroadcastNotifUnsub = null;
+let chatReadAt = null;
+let chatReadBySender = {};
+let chatIncomingById = new Map();
+// Cache per-query dipisahkan agar dokumen yang dihapus dari Firestore
+// tidak tertinggal sebagai unread palsu di cache gabungan.
+let chatPrivateIncomingById = new Map();
+let chatBroadcastIncomingById = new Map();
+let chatUnreadIds = new Set();
+let chatUnreadInitialized = false;
+let chatCurrentMessages = [];
+let chatListenersReadyFor = null;
+let chatWidgetInitialized = false;
+
+function chatTimestamp(value) {
+  if (!value) return 0;
+  if (typeof value.toMillis === 'function') return value.toMillis();
+  if (value instanceof Date) return value.getTime();
+  if (typeof value === 'number') return value;
+  // Firestore Timestamp yang terserialisasi setelah dibaca dari cache/JSON.
+  if (typeof value === 'object') {
+    const seconds = Number(value.seconds ?? value._seconds);
+    const nanos = Number(value.nanoseconds ?? value._nanoseconds ?? 0);
+    if (Number.isFinite(seconds)) return seconds * 1000 + Math.floor(nanos / 1e6);
+  }
+  return 0;
+}
+function chatSafeText(el, text) { el.textContent = String(text || ''); }
+function updateChatBadge() {
+  const badge = document.getElementById('chat-notification-badge');
+  if (!badge) return;
+  const unreadSenders = new Set();
+  chatIncomingById.forEach(message => {
+    if (!isChatMessageUnread(message)) return;
+    const senderKey = chatSenderKey(message);
+    if (senderKey && senderKey !== 'unknown') unreadSenders.add(senderKey);
+  });
+  const count = chatUnreadInitialized ? unreadSenders.size : 0;
+  badge.textContent = count > 99 ? '99+' : String(count);
+  badge.style.display = count > 0 ? 'inline-flex' : 'none';
+  badge.hidden = count === 0;
+  badge.setAttribute('aria-hidden', String(count === 0));
+}
+function isChatWidgetOpen() {
+  const box = document.getElementById('ai-chat-box');
+  return !!box && window.getComputedStyle(box).display !== 'none';
+}
+function showBrowserNotification(senderName, messageText) {
+  if (!('Notification' in window) || Notification.permission !== 'granted' || document.visibilityState === 'visible') return;
+  try { new Notification('Pesan baru dari ' + senderName, { body: String(messageText || '').slice(0, 140) }); }
+  catch (err) { console.warn('Notifikasi browser tidak dapat ditampilkan:', err); }
+}
+function chatSenderKey(message) { return String(message.senderUid || message.senderUsername || 'unknown'); }
+function isChatMessageFromCurrentUser(message) {
+  if (!message || !currentUser) return false;
+  const currentUid = String(auth?.currentUser?.uid || currentUser.uid || '');
+  const senderUid = String(message.senderUid || message.uid || '');
+  if (currentUid && senderUid && senderUid === currentUid) return true;
+  const sender = String(message.senderUsername || '').trim().toLowerCase();
+  const me = String(currentUser.username || '').trim().toLowerCase();
+  return !!sender && !!me && sender === me;
+}
+function isChatMessageForCurrentUser(message, source = '') {
+  if (!message || !currentUser || isChatMessageFromCurrentUser(message)) return false;
+
+  const currentUid = String(auth?.currentUser?.uid || currentUser.uid || '');
+  const recipientUid = String(message.recipientUid || '');
+  const recipient = String(message.recipientUsername || '').trim().toLowerCase();
+
+  // Notifikasi hanya menerima bentuk pesan yang dibuat oleh sendUserMessage().
+  // Pesan private harus memiliki penerima UID yang tepat dan bukan broadcast.
+  if (source === 'private' || message.type === 'private') {
+    return message.type === 'private'
+      && !!currentUid
+      && recipientUid === currentUid
+      && recipient !== '__broadcast__';
+  }
+
+  // Broadcast harus cocok pada kedua field; jangan menerima dokumen lama/
+  // malformed hanya karena salah satu field menyebut "broadcast".
+  if (source === 'broadcast' || message.type === 'broadcast') {
+    return message.type === 'broadcast' && recipient === '__broadcast__';
+  }
+
+  return false;
+}
+function isChatMessageUnread(message) {
+  // Badge hanya boleh berasal dari pesan nyata yang ditujukan ke akun ini.
+  if (!isChatMessageForCurrentUser(message)) return false;
+  const key = chatSenderKey(message);
+  const created = chatTimestamp(message.createdAt || message.timestamp || message.sentAt);
+  const read = chatTimestamp(chatReadBySender[key] || chatReadAt);
+  return created > 0 && created > read;
+}
+function refreshChatUnreadState() {
+  chatUnreadIds.clear();
+  chatIncomingById.forEach((message, id) => { if (isChatMessageUnread(message)) chatUnreadIds.add(id); });
+  updateChatBadge();
+  renderChatConversationList();
+}
+function registerChatIncoming(message, docId) {
+  if (!currentUser || !isChatMessageForCurrentUser(message)) return;
+  chatIncomingById.set(docId, message);
+  if (isChatMessageUnread(message) && !chatUnreadIds.has(docId)) {
+    const sender = message.senderName || message.senderUsername || 'Pengguna';
+    if (!isChatWidgetOpen()) showBrowserNotification(sender, message.text);
+  }
+  refreshChatUnreadState();
+}
+let chatReadWritePromise = Promise.resolve();
+
+async function markChatAsRead() {
+  if (!currentUser || !auth?.currentUser || !db || !firebase?.firestore) return;
+
+  // Serialisasi penulisan agar beberapa snapshot realtime tidak saling
+  // menimpa timestamp baca yang lebih baru dengan timestamp yang lebih lama.
+  chatReadWritePromise = chatReadWritePromise.then(async () => {
+    const latestBySender = new Map();
+
+    // Badge berada pada tombol pusat chat, bukan pada satu percakapan.
+    // Karena itu, saat pusat chat dibuka, semua pesan masuk yang membentuk
+    // badge (chat pribadi dan broadcast) ditandai dibaca secara persisten.
+    const messagesToMarkRead = [...chatIncomingById.values()];
+    messagesToMarkRead.forEach(message => {
+      if (!message || isChatMessageFromCurrentUser(message)) return;
+
+      const key = chatSenderKey(message);
+      const millis = chatTimestamp(message.createdAt);
+      if (!key || key === 'unknown' || !millis) return;
+
+      latestBySender.set(key, Math.max(latestBySender.get(key) || 0, millis));
+    });
+
+    if (!latestBySender.size) {
+      refreshChatUnreadState();
+      return;
+    }
+
+    const update = {
+      uid: auth.currentUser.uid,
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      lastReadBySender: {}
+    };
+    const timestampsToPersist = new Map();
+
+    latestBySender.forEach((millis, key) => {
+      const alreadyRead = chatTimestamp(chatReadBySender[key] || chatReadAt);
+      if (millis > alreadyRead) {
+        timestampsToPersist.set(key, millis);
+        // Simpan sebagai map bertingkat, bukan nama field literal
+        // "lastReadBySender.UID". Kode pembacaan mengambil map ini langsung.
+        update.lastReadBySender[key] =
+          firebase.firestore.Timestamp.fromMillis(millis);
+      }
+    });
+
+    if (!timestampsToPersist.size) {
+      refreshChatUnreadState();
+      return;
+    }
+
+    try {
+      await db.collection('chat_reads').doc(auth.currentUser.uid).set(update, { merge: true });
+
+      timestampsToPersist.forEach((millis, key) => {
+        chatReadBySender[key] = firebase.firestore.Timestamp.fromMillis(millis);
+      });
+
+      // Segarkan badge dan titik merah setelah status baca tersimpan.
+      refreshChatUnreadState();
+    } catch (err) {
+      console.error('Gagal menyimpan status baca chat ke Firestore:', err);
+      showToast?.('Status baca gagal disimpan. Periksa Firestore Rules pada chat_reads.', 4000);
+    }
+  }).catch(err => {
+    console.error('Antrean status baca chat gagal:', err);
+  });
+
+  return chatReadWritePromise;
+}
+function renderChatConversationList() {
+  const host = document.getElementById('chat-conversation-list');
+  const select = document.getElementById('user-chat-target');
+  if (!host || !select) return;
+  host.replaceChildren();
+  const unreadSenders = new Set();
+  [...chatIncomingById.values()].forEach(message => {
+    if (!isChatMessageUnread(message) || !message.senderUsername || isChatMessageFromCurrentUser(message)) return;
+    unreadSenders.add(message.type === 'broadcast' || message.recipientUsername === '__broadcast__'
+      ? '__broadcast__'
+      : String(message.senderUid || message.senderUsername));
+  });
+  const unreadLabel = document.getElementById('chat-conversation-unread-count');
+  if (unreadLabel) unreadLabel.textContent = `(${unreadSenders.size} pengirim belum dibaca)`;
+  [...select.options].forEach(option => {
+    const target = option.value;
+    const row = document.createElement('button');
+    row.type = 'button';
+    row.style.cssText = `width:100%;display:flex;align-items:center;gap:8px;text-align:left;padding:7px 8px;border:0;border-radius:6px;margin-bottom:3px;background:${select.value === target ? '#3a3320' : 'transparent'};color:#eee;cursor:pointer;font-size:11px;`;
+    const dot = document.createElement('span');
+    const unread = [...chatIncomingById.values()].some(message => {
+      if (!isChatMessageUnread(message)) return false;
+      return target === '__broadcast__' ? message.recipientUsername === '__broadcast__' : message.senderUsername === target && message.type !== 'broadcast';
+    });
+    dot.style.cssText = `width:8px;height:8px;flex:0 0 8px;border-radius:50%;background:${unread ? '#ef4444' : '#555'};box-shadow:${unread ? '0 0 7px #ef4444' : 'none'};`;
+    const label = document.createElement('span'); label.textContent = option.textContent;
+    label.style.flex = '1';
+    row.append(dot, label);
+    row.addEventListener('click', () => { select.value = target; stopConversationListener(); startConversationListener(); renderChatConversationList(); });
+    host.appendChild(row);
+  });
+}
+function renderUserChatMessages(messages) {
+  const container = document.getElementById('user-chat-messages');
+  if (!container) return;
+  container.replaceChildren();
+  if (!messages.length) {
+    const empty = document.createElement('div');
+    empty.style.cssText = 'color:#888;text-align:center;margin:auto;';
+    empty.textContent = 'Belum ada pesan. Mulai percakapan di sini.';
+    container.appendChild(empty); return;
+  }
+  messages.forEach(msg => {
+    const mine = msg.senderUsername === currentUser?.username;
+    const wrap = document.createElement('div');
+    wrap.style.cssText = `display:flex;flex-direction:column;align-items:${mine ? 'flex-end' : 'flex-start'};width:100%;`;
+    const bubble = document.createElement('div');
+    bubble.style.cssText = `max-width:88%;padding:8px 10px;border-radius:9px;background:${mine ? '#254735' : '#303030'};color:#f3f3f3;overflow-wrap:anywhere;white-space:pre-wrap;`;
+    const sender = document.createElement('strong');
+    sender.style.cssText = 'display:block;font-size:10px;color:#e0c36d;margin-bottom:3px;';
+    sender.textContent = mine ? 'Anda' : (msg.senderName || msg.senderUsername || 'Pengguna');
+    const body = document.createElement('div'); body.textContent = msg.text || '';
+    const time = document.createElement('div');
+    time.style.cssText = 'font-size:9px;color:#aaa;text-align:right;margin-top:4px;';
+    const ms = chatTimestamp(msg.createdAt);
+    time.textContent = ms ? new Date(ms).toLocaleString('id-ID', {day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}) : 'Baru saja';
+    bubble.append(sender, body, time); wrap.appendChild(bubble); container.appendChild(wrap);
+  });
+  container.scrollTop = container.scrollHeight;
+}
+function stopConversationListener() {
+  if (chatMessageUnsub) { chatMessageUnsub(); chatMessageUnsub = null; }
+  chatListenersReadyFor = null;
+}
+function startConversationListener() {
+  if (!currentUser || !auth.currentUser) return;
+  const target = document.getElementById('user-chat-target')?.value || '__broadcast__';
+  const listenerKey = currentUser.username + '|' + target;
+  if (chatListenersReadyFor === listenerKey) return;
+  stopConversationListener(); chatListenersReadyFor = listenerKey;
+  let query = db.collection('chat_messages');
+  if (target === '__broadcast__') query = query.where('recipientUsername', '==', '__broadcast__');
+  else query = query.where('participantUids', 'array-contains', auth.currentUser.uid);
+  chatMessageUnsub = query.limit(150).onSnapshot(snapshot => {
+    const list = [];
+    snapshot.forEach(doc => {
+      const data = { id: doc.id, ...doc.data() };
+      if (target === '__broadcast__') list.push(data);
+      else if (data.participants?.includes(target) && data.participants?.includes(currentUser.username)) list.push(data);
+    });
+    list.sort((a,b) => chatTimestamp(a.createdAt) - chatTimestamp(b.createdAt));
+    chatCurrentMessages = list;
+    renderUserChatMessages(list);
+    if (isChatWidgetOpen() && document.getElementById('panel-chat-user')?.style.display !== 'none') markChatAsRead();
+  }, err => {
+    console.error('Gagal memuat percakapan:', err);
+    const el = document.getElementById('user-chat-messages');
+    if (el) el.textContent = 'Chat belum dapat dimuat. Periksa Firestore Security Rules untuk koleksi chat_messages.';
+  });
+}
+function initChatRealtime() {
+  if (!currentUser || !auth.currentUser) return;
+  loadChatUsers();
+  if (chatPrivateNotifUnsub) chatPrivateNotifUnsub();
+  if (chatBroadcastNotifUnsub) chatBroadcastNotifUnsub();
+  chatUnreadIds = new Set();
+  chatIncomingById = new Map();
+  chatPrivateIncomingById = new Map();
+  chatBroadcastIncomingById = new Map();
+  chatUnreadInitialized = false;
+  chatUnreadIds.clear();
+  chatIncomingById.clear();
+  updateChatBadge();
+  chatReadWritePromise = Promise.resolve();
+  chatReadBySender = {}; chatReadAt = null; chatCurrentMessages = [];
+  db.collection('chat_reads').doc(auth.currentUser.uid).get().then(doc => {
+    chatReadBySender = doc.exists ? (doc.data().lastReadBySender || {}) : {};
+    chatReadAt = doc.exists ? (doc.data().lastReadAt || null) : null;
+  }).catch(() => { chatReadBySender = {}; chatReadAt = null; }).finally(() => {
+    // Hanya ambil chat pribadi yang penerimanya adalah akun login.
+    // participantUids sengaja tidak dipakai untuk badge karena berisi kedua pihak
+    // (pengirim dan penerima) sehingga dapat memicu notifikasi yang bukan inbound.
+    const privateQuery = db.collection('chat_messages').where('recipientUid', '==', auth.currentUser.uid).limit(150);
+    const broadcastQuery = db.collection('chat_messages').where('recipientUsername', '==', '__broadcast__').limit(150);
+    const processUnread = (snapshot, source) => {
+      const sourceMap = source === 'broadcast' ? chatBroadcastIncomingById : chatPrivateIncomingById;
+      // Snapshot Firestore adalah keadaan terkini query. Ganti isi cache
+      // sumber ini, jangan hanya menambahkan dokumen; dokumen yang dihapus
+      // harus ikut hilang agar badge tidak tertinggal.
+      sourceMap.clear();
+      snapshot.forEach(doc => {
+        const message = { id: doc.id, ...doc.data() };
+        if (!message.senderUsername || !isChatMessageForCurrentUser(message, source)) return;
+        sourceMap.set(doc.id, message);
+      });
+      chatIncomingById = new Map([...chatPrivateIncomingById, ...chatBroadcastIncomingById]);
+      chatUnreadIds = new Set();
+      chatIncomingById.forEach((message, id) => {
+        if (isChatMessageUnread(message)) chatUnreadIds.add(id);
+      });
+      chatUnreadInitialized = true;
+      refreshChatUnreadState();
+      // Jika widget sudah terbuka saat listener selesai memuat data,
+      // tandai pesan yang benar-benar ada sebagai sudah dibaca.
+      if (isChatWidgetOpen() && currentUser && auth?.currentUser) markChatAsRead();
+    };
+    chatPrivateNotifUnsub = privateQuery.onSnapshot(snapshot => processUnread(snapshot, 'private'), err => console.error('Chat pribadi realtime:', err));
+    chatBroadcastNotifUnsub = broadcastQuery.onSnapshot(snapshot => processUnread(snapshot, 'broadcast'), err => console.error('Chat broadcast realtime:', err));
+    startConversationListener();
+  });
+}
+function loadChatUsers() {
+  const select = document.getElementById('user-chat-target');
+  if (!select || !currentUser) return;
+  const previous = select.value || '__broadcast__';
+  select.replaceChildren();
+  const broadcast = document.createElement('option');
+  broadcast.value = '__broadcast__'; broadcast.textContent = '📢 Semua Pengguna (Broadcast)'; select.appendChild(broadcast);
+  Object.entries(usersDatabase || {}).sort((a,b) => (a[1]?.fullname || a[0]).localeCompare(b[1]?.fullname || b[0])).forEach(([username, user]) => {
+    if (!user || username === currentUser.username) return;
+    const option = document.createElement('option'); option.value = username;
+    option.textContent = `${user.fullname || username}${user.roleTitle ? ' · ' + user.roleTitle : ''}`;
+    select.appendChild(option);
+  });
+  select.value = [...select.options].some(o => o.value === previous) ? previous : '__broadcast__';
+  renderChatConversationList();
+}
+window.sendUserMessage = async function() {
+  const input = document.getElementById('user-chat-input');
+  const text = input?.value.trim();
+  if (!text) return;
+  if (!currentUser || !auth.currentUser) { alert('Silakan login kembali untuk mengirim pesan.'); return; }
+  const target = document.getElementById('user-chat-target')?.value || '__broadcast__';
+  const button = document.getElementById('user-chat-send-btn');
+  if (button) { button.disabled = true; button.textContent = '...'; }
+  try {
+    const participants = target === '__broadcast__' ? [] : [currentUser.username, target].sort();
+    const recipientUid = target === '__broadcast__' ? null : (usersDatabase[target]?.uid || null);
+    if (target !== '__broadcast__' && !recipientUid) throw new Error('UID penerima tidak ditemukan. Muat ulang aplikasi atau hubungi administrator.');
+    const participantUids = target === '__broadcast__' ? [] : [auth.currentUser.uid, recipientUid].sort();
+    await db.collection('chat_messages').add({
+      senderUsername: currentUser.username,
+      senderName: currentUser.fullname || currentUser.username,
+      senderUid: auth.currentUser.uid,
+      recipientUsername: target,
+      recipientName: target === '__broadcast__' ? 'Semua Pengguna' : (usersDatabase[target]?.fullname || target),
+      participants,
+      participantUids,
+      recipientUid,
+      text,
+      type: target === '__broadcast__' ? 'broadcast' : 'private',
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    input.value = '';
+  } catch (err) {
+    console.error('Gagal mengirim chat:', err);
+    alert('Pesan belum terkirim. Periksa koneksi dan Firestore Security Rules untuk chat_messages.');
+  } finally { if (button) { button.disabled = false; button.textContent = 'Kirim'; } }
+};
+function switchChatTab(tab) {
+  const aiPanel = document.getElementById('panel-chat-ai');
+  const userPanel = document.getElementById('panel-chat-user');
+  const aiBtn = document.getElementById('tab-btn-ai');
+  const userBtn = document.getElementById('tab-btn-user');
+  if (!aiPanel || !userPanel || !aiBtn || !userBtn) return;
+  const isAI = tab === 'ai';
+  aiPanel.style.display = isAI ? 'flex' : 'none'; userPanel.style.display = isAI ? 'none' : 'flex';
+  aiBtn.style.color = isAI ? '#d4af37' : '#999'; aiBtn.style.borderBottom = isAI ? '2px solid #d4af37' : '2px solid transparent'; aiBtn.style.background = isAI ? '#242424' : '#191919';
+  userBtn.style.color = isAI ? '#999' : '#d4af37'; userBtn.style.borderBottom = isAI ? '2px solid transparent' : '2px solid #d4af37'; userBtn.style.background = isAI ? '#191919' : '#242424';
+  if (!isAI) {
+    startConversationListener();
+    renderChatConversationList();
+    if (isChatWidgetOpen()) {
+      // Tandai percakapan aktif setelah daftar pesan yang tampil tersedia.
+      markChatAsRead();
+    }
+  }
+}
+function appendKiraMessage(text, fromUser) {
+  const container = document.getElementById('ai-chat-messages'); if (!container) return;
+  const bubble = document.createElement('div');
+  bubble.style.cssText = `align-self:${fromUser ? 'flex-end' : 'flex-start'};max-width:90%;padding:9px 11px;border-radius:10px;background:${fromUser ? '#59451b' : '#303030'};color:#f5f5f5;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.5;`;
+  if (!fromUser) { const label = document.createElement('strong'); label.textContent = 'Kira'; label.style.cssText = 'display:block;color:#e0c36d;margin-bottom:4px;'; bubble.appendChild(label); }
+  const body = document.createElement('span'); body.textContent = text; bubble.appendChild(body); container.appendChild(bubble); container.scrollTop = container.scrollHeight;
+}
+// Pengetahuan Kira disusun dari menu, label, dan alur kerja yang tertanam di aplikasi.
+const KIRA_KNOWLEDGE = [
+{keys:['mulai','panduan','cara menggunakan','penggunaan aplikasi','fitur aplikasi'],answer:`KDP DOKU SIGN adalah sistem otorisasi dokumen dan tanda tangan berjenjang. Alur umum: login → Ringkasan → Buat Permintaan Tanda Tangan → pilih jenis dokumen → unggah PDF → pihak berwenang memeriksa dan memberi otorisasi → pantau status di Ringkasan atau Dokumen Saya. Menu utama: Ringkasan, Dokumen Saya, Menunggu Saya, Utilitas PDF, Manajemen User (khusus Administrator/KDP Kabag/Pimpinan MR), Direktori Kontak, Profil Saya, dan Pengaturan.`},
+{keys:['login','masuk','username','email','kata sandi','password','lupa password'],answer:`Untuk masuk, isi Username atau Email dengan akun terdaftar, masukkan kata sandi, lalu klik Masuk ke Sistem. Jika gagal, periksa ejaan username/email, kata sandi, dan koneksi internet. Jika lupa kata sandi atau akun bermasalah, hubungi Administrator. Jangan kirim kata sandi atau OTP melalui chat.`},
+{keys:['upload','unggah','pengajuan','buat dokumen','kirim dokumen','permintaan tanda tangan'],answer:`Cara mengajukan dokumen: 1) Klik “+ Buat Permintaan Tanda Tangan” di Ringkasan. 2) Isi Judul Dokumen (opsional; jika kosong memakai nama file). 3) Pilih Jenis Dokumen & Otorisasi. 4) Pilih atau seret file PDF ke area unggah. 5) Klik Kirim Pengajuan dan tunggu sampai selesai. Jenis dokumen: KDP (2 Staff KDP → Kabag → Pimpinan), Kasir (Kasir → Kabag → Pimpinan), ADMKDP (Admin KDP → Kabag → Pimpinan), Pihak Ketiga (2 Staff KDP → Kabag → Pimpinan), Lain-lain (review Staff KDP opsional; Kabag dapat langsung → Pimpinan).`},
+{keys:['approval','otorisasi','setujui','menyetujui','tanda tangan','ttd','paraf','stempel','menunggu saya','verifikasi','review'],answer:`Untuk memproses dokumen, buka Menunggu Saya, pilih dokumen yang menjadi giliran Anda, periksa/preview PDF, lalu tempatkan paraf, tanda tangan, tanggal, atau anotasi sesuai kebutuhan dan lanjutkan persetujuan. Alur KDP/Pihak Ketiga: 2 Staff KDP wajib; setelah dua persetujuan masuk tahap KDP Kabag (Staff ke-3 masih dapat review), lalu Pimpinan MR. Alur Kasir/ADMKDP: Kasir/Admin KDP → KDP Kabag → Pimpinan MR. Alur Lain-lain: Staff KDP opsional; KDP Kabag dapat langsung memproses → Pimpinan MR. Selesai setelah persetujuan Pimpinan MR.`},
+{keys:['tolak','ditolak','penolakan','reject','revisi dokumen'],answer:`Jika dokumen tidak dapat disetujui, gunakan tindakan penolakan pada layar proses dan isi alasan dengan jelas sebelum konfirmasi. Status menjadi “Ditolak: [alasan]”. Pengaju dapat melihat status tersebut. Dokumen ditolak memiliki masa retensi 5 hari sebelum penghapusan otomatis.`},
+{keys:['status','timeline','ringkasan','jumlah dokumen','proses dokumen','selesai'],answer:`Ringkasan menampilkan Total Dokumen, Dalam Proses, Perlu Tindakan, Ditolak, dan Selesai. Klik kartu statistik untuk memfilter tabel; bagian bawah menampilkan Timeline Aktivitas Terbaru. Dokumen Saya menampilkan dokumen yang Anda ajukan. Menunggu Saya menampilkan dokumen yang membutuhkan tindakan akun Anda.`},
+{keys:['gabung pdf','merge','menggabungkan pdf','atur halaman','susun halaman','hapus halaman','urutan halaman','utilitas pdf'],answer:`Utilitas PDF memiliki dua fitur. Gabung PDF: pilih beberapa PDF, tambahkan file bila perlu, susun urutan kartu dengan drag & drop atau tombol geser, lalu klik Gabungkan PDF. Setelah selesai, hasil dapat diunduh atau diteruskan ke proses tanda tangan. Atur Halaman PDF: pilih satu PDF, susun ulang thumbnail dengan drag & drop, atau hapus halaman melalui tombol ✕. Jika diteruskan ke approval, isi judul dan pilih jenis/alur otorisasi.`},
+{keys:['cloud','penyimpanan','storage','cloudinary','r2','supabase','ukuran file','5 mb','15 mb','file besar'],answer:`Penyimpanan dipilih otomatis berdasarkan ukuran file final. Satu file hanya masuk ke satu provider: sampai 5 MiB menggunakan Cloudinary; lebih dari 5 sampai 15 MiB menggunakan Cloudflare R2; lebih dari 15 MiB menggunakan Supabase. Pengguna cukup mengunggah file melalui aplikasi.`},
+{keys:['retensi','hapus otomatis','berapa lama','masa simpan','dokumen ditolak','dokumen selesai','5 hari','60 hari'],answer:`Aturan retensi aplikasi: dokumen ditolak dihapus otomatis setelah 5 hari; dokumen selesai/fully approved dihapus otomatis setelah 60 hari. Awal perhitungan mengikuti tanggal penolakan atau penyelesaian. Simpan salinan sesuai kebijakan kerja sebelum masa retensi berakhir.`},
+{keys:['profil','foto','avatar','warna tinta','warna stempel','ganti nama','jabatan','paraf saya','ttd saya'],answer:`Menu Profil Saya digunakan untuk melihat dan memperbarui data profil serta aset akun. Bagian yang tersedia mencakup nama/jabatan, foto profil, warna tinta/stempel, serta aset paraf dan tanda tangan. Klik Ganti pada bagian yang ingin diperbarui, lakukan perubahan, lalu simpan. Ikuti format file yang diminta pada kolom unggah.`},
+{keys:['manajemen user','tambah user','buat akun','edit user','pengguna baru','direktori kontak','kontak'],answer:`Manajemen User hanya dapat diakses Administrator, KDP Kabag, dan Pimpinan MR. Pengguna berwenang dapat menambah atau mengedit user. Form tambah user memuat nama lengkap, email, username, posisi/jabatan, warna tinta/stempel, kata sandi dan konfirmasi, serta PNG paraf dan TTD. Direktori Kontak menampilkan daftar kontak pengguna.`},
+{keys:['tema','mode gelap','mode terang','dark','light','pengaturan'],answer:`Buka Pengaturan Sistem & Tema, lalu pilih Mode Gelap atau Mode Terang.`},
+{keys:['chat','pesan','broadcast','notifikasi chat','kirim pesan','pengguna lain'],answer:`Tab Chat User untuk komunikasi antar pengguna. Pilih penerima pada Percakapan/Kirim ke. Pilihan Semua Pengguna (Broadcast) mengirim ke semua pengguna; memilih nama tertentu mengirim pesan pribadi. Badge dan notifikasi browser memberi tahu pesan masuk sesuai izin notifikasi browser.`},
+{keys:['error','gagal','tidak bisa','bermasalah','tidak muncul','loading','preview','pratinjau','unggah gagal'],answer:`Pemeriksaan awal: pastikan internet aktif; muat ulang halaman dan login kembali jika sesi berakhir; pastikan file PDF valid; buka ulang preview dan tunggu pemuatan; jangan klik persetujuan berulang kali sebelum memeriksa status dokumen. Catat pesan error dan waktu kejadian untuk Administrator. Untuk error teknis spesifik yang tidak dijelaskan panduan, Kira tidak akan menebak penyebabnya.`}
+];
+function kiraNormalize(text){return String(text||'').toLowerCase().replace(/[^\p{L}\p{N}\s]/gu,' ').replace(/\s+/g,' ').trim();}
+function kiraFindAnswer(question){const q=kiraNormalize(question);let best=null,scoreBest=0;for(const item of KIRA_KNOWLEDGE){let score=0;for(const key of item.keys){const k=kiraNormalize(key);if(q.includes(k))score+=Math.max(2,k.split(' ').length);else{const words=k.split(' ').filter(w=>w.length>3);if(words.length&&words.every(w=>q.includes(w)))score++;}}if(score>scoreBest){best=item;scoreBest=score;}}return scoreBest>=2?best.answer:`Saya belum menemukan jawaban yang tepat di panduan internal untuk pertanyaan itu. Coba gunakan kata kunci: unggah dokumen, alur tanda tangan, penolakan, status dokumen, gabung PDF, atur halaman, penyimpanan cloud, profil, atau retensi. Jika ini error teknis, kirim pesan error kepada Administrator agar diperiksa.`;}
+// Panduan khusus pengunjung: hanya membahas halaman sebelum login.
+const KIRA_GUEST_KNOWLEDGE = [
+  {keys:['tujuan','fungsi aplikasi','apa itu','tentang aplikasi','kdp doku sign','manfaat'], answer:'KDP DOKU SIGN adalah aplikasi untuk pengajuan, pemeriksaan, otorisasi berjenjang, dan tanda tangan dokumen secara digital. Pengguna dapat mengajukan dokumen sesuai jenisnya, lalu pihak yang berwenang memproses sesuai tahapan.'},
+  {keys:['login','masuk','username','email','kata sandi','password','akun','sandi'], answer:'Untuk login, masukkan username atau email yang sudah terdaftar pada kolom “Username atau Email”, masukkan kata sandi, lalu klik “Masuk ke Sistem”. Jika gagal, periksa kembali penulisan akun dan kata sandi. Jika tetap tidak bisa, hubungi Administrator. Jangan pernah membagikan kata sandi atau OTP.'},
+  {keys:['daftar','registrasi','register','buat akun','akun baru','pendaftaran'], answer:'Untuk mendaftar, klik “Daftar Akun Baru” pada halaman login. Isi nama lengkap, email, username, posisi/jabatan, warna tinta/stempel, kata sandi dan konfirmasi. Unggah PNG paraf dan PNG tanda tangan jika diminta, lalu klik “Daftar Akun”. Jika pendaftaran tidak berhasil atau memerlukan otorisasi, hubungi Administrator.'},
+  {keys:['fitur','menu','apa saja','kemampuan','bisa apa'], answer:'Fitur utama setelah login meliputi Ringkasan, pengajuan dokumen, Dokumen Saya, Menunggu Saya, proses otorisasi dan tanda tangan, Utilitas PDF (Gabung PDF dan Atur Halaman), Direktori Kontak, Profil Saya, Pengaturan, serta Manajemen User sesuai hak akses. Untuk menjaga keamanan, detail dokumen dan proses internal hanya dapat diakses setelah login.'},
+  {keys:['lupa password','lupa kata sandi','reset password','password hilang'], answer:'Jika lupa kata sandi, silakan hubungi Administrator untuk bantuan pemulihan akun. Jangan mengirim kata sandi lama, OTP, atau informasi rahasia melalui chat.'},
+  {keys:['hubungi','kontak','administrator','bantuan','masalah login'], answer:'Jika mengalami kendala login atau pendaftaran, hubungi Administrator aplikasi melalui saluran komunikasi internal perusahaan. Sertakan username dan pesan kesalahan, tetapi jangan pernah mengirim kata sandi atau OTP.'}
+];
+function kiraFindGuestAnswer(question){
+  const q=kiraNormalize(question); let best=null, scoreBest=0;
+  for(const item of KIRA_GUEST_KNOWLEDGE){let score=0;for(const key of item.keys){const k=kiraNormalize(key);if(q.includes(k))score+=Math.max(2,k.split(' ').length);else{const words=k.split(' ').filter(w=>w.length>3);if(words.length&&words.every(w=>q.includes(w)))score++;}}if(score>scoreBest){best=item;scoreBest=score;}}
+  return scoreBest>=2 ? best.answer : 'Sebelum login, saya hanya dapat membantu pertanyaan tentang tujuan aplikasi, cara login, pendaftaran akun, lupa kata sandi, dan gambaran umum fitur. Silakan tanyakan salah satu topik tersebut. Untuk panduan penggunaan dokumen dan proses internal, silakan login terlebih dahulu.';
+}
+// Tombol pertanyaan cepat: pilihan berubah sesuai status login.
+const KIRA_GUEST_QUICK_QUESTIONS = [
+  'Apa tujuan aplikasi KDP DOKU SIGN?',
+  'Bagaimana cara login?',
+  'Bagaimana cara mendaftar akun baru?',
+  'Apa yang harus dilakukan jika lupa kata sandi?',
+  'Apa saja fitur yang tersedia setelah login?'
+];
+const KIRA_USER_QUICK_QUESTIONS = [
+  'Bagaimana cara mengajukan dokumen untuk tanda tangan?',
+  'Bagaimana alur otorisasi dokumen?',
+  'Bagaimana cara memproses dokumen yang menunggu saya?',
+  'Bagaimana cara memberi paraf dan tanda tangan?',
+  'Bagaimana cara melihat status dan riwayat dokumen?',
+  'Bagaimana cara menggabungkan beberapa file PDF?',
+  'Bagaimana cara mengatur atau mengurutkan halaman PDF?',
+  'Di mana dokumen saya disimpan dan berapa lama masa simpannya?',
+  'Bagaimana cara mengirim pesan ke pengguna lain?'
+];
+function renderKiraQuickQuestions(){
+  const list=document.getElementById('kira-quick-list');
+  const title=document.getElementById('kira-quick-title');
+  if(!list)return;
+  list.replaceChildren();
+  const questions=currentUser ? KIRA_USER_QUICK_QUESTIONS : KIRA_GUEST_QUICK_QUESTIONS;
+  if(title)title.textContent=currentUser ? 'PERTANYAAN PANDUAN' : 'PERTANYAAN SEBELUM LOGIN';
+  const countLabel=document.getElementById('kira-quick-count');
+  if(countLabel)countLabel.textContent=`(${questions.length} pertanyaan · klik untuk membuka)`;
+  questions.forEach(question=>{
+    const button=document.createElement('button');
+    button.type='button';
+    button.textContent=question;
+    button.style.cssText='background:#292929;color:#e7d99f;border:1px solid #65552b;border-radius:14px;padding:6px 9px;font-size:10px;line-height:1.35;text-align:left;cursor:pointer;max-width:100%;';
+    button.addEventListener('click',()=>{
+      const input=document.getElementById('ai-chat-input');
+      if(input)input.value=question;
+      window.sendMessagetoAI();
+    });
+    list.appendChild(button);
+  });
+}
+
+function clearKiraConversation(){
+  const container=document.getElementById('ai-chat-messages'); if(!container)return;
+  container.replaceChildren();
+  appendKiraMessage(currentUser ? 'Halo! Saya Kira, panduan penggunaan KDP DOKU SIGN. Silakan tanyakan fitur dan cara kerja aplikasi.' : 'Halo! Saya Kira. Saya dapat membantu menjelaskan tujuan aplikasi, cara login, pendaftaran akun, dan bantuan awal sebelum Anda masuk.', false);
+}
+function updateKiraAccessMode(resetConversation=true){
+  const userTab=document.getElementById('tab-btn-user');
+  const userPanel=document.getElementById('panel-chat-user');
+  const aiTab=document.getElementById('tab-btn-ai');
+  if(!currentUser){
+    if(userTab)userTab.style.display='none';
+    if(userPanel)userPanel.style.display='none';
+    if(aiTab)aiTab.style.flex='1';
+    switchChatTab('ai');
+  }else{
+    if(userTab)userTab.style.display='block';
+    if(userPanel)userPanel.style.display='none';
+    if(aiTab)aiTab.style.flex='1';
+    switchChatTab('ai');
+  }
+  const hint=document.querySelector('#panel-chat-ai > div:last-child');
+  if(hint)hint.textContent=currentUser ? 'Panduan lokal aplikasi. Tidak terhubung ke layanan AI eksternal. Jangan kirim kata sandi atau data rahasia.' : 'Mode pengunjung: tanyakan tujuan aplikasi, login, pendaftaran, atau bantuan awal. Chat antar pengguna tersedia setelah login.';
+  const input=document.getElementById('ai-chat-input');
+  if(input)input.placeholder=currentUser ? 'Tanyakan panduan penggunaan aplikasi...' : 'Tanyakan tentang login, daftar, atau aplikasi...';
+  renderKiraQuickQuestions();
+  if(resetConversation)clearKiraConversation();
+}
+window.sendMessagetoAI=function(){
+  const input=document.getElementById('ai-chat-input'); const button=document.getElementById('ai-chat-send-btn');
+  const question=input?.value.trim(); if(!question)return;
+  input.value=''; appendKiraMessage(question,true); if(button)button.disabled=true;
+  const answer=currentUser ? kiraFindAnswer(question) : kiraFindGuestAnswer(question);
+  window.setTimeout(()=>{appendKiraMessage(answer,false);if(button)button.disabled=false;input?.focus();},100);
+};
+function handleAIChatKeyPress(event) { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); window.sendMessagetoAI(); } }
+function initChatWidget() {
+  if (chatWidgetInitialized) return; chatWidgetInitialized = true;
+  updateKiraAccessMode(true);
+  const box = document.getElementById('ai-chat-box');
+  document.getElementById('ai-chat-toggle-btn')?.addEventListener('click', () => {
+    if (!box) return;
+    const opening = !isChatWidgetOpen();
+    box.style.display = opening ? 'flex' : 'none';
+    if (opening && currentUser && auth?.currentUser) {
+      // Saat pusat chat dibuka, bersihkan badge untuk pesan yang sudah ada.
+      // Pesan baru yang masuk setelahnya tetap akan memunculkan badge kembali.
+      chatUnreadIds.clear();
+      updateChatBadge();
+      markChatAsRead();
+      if (document.getElementById('panel-chat-user')?.style.display !== 'none') {
+        startConversationListener();
+      }
+    }
+  });
+  document.getElementById('ai-chat-close-btn')?.addEventListener('click', () => { if (box) box.style.display = 'none'; });
+  const quickToggle = document.getElementById('kira-quick-toggle');
+  const quickList = document.getElementById('kira-quick-list');
+  quickToggle?.addEventListener('click', () => {
+    if (!quickList) return;
+    const open = quickList.style.display === 'none' || !quickList.style.display;
+    quickList.style.display = open ? 'flex' : 'none';
+    quickList.hidden = !open;
+    quickToggle.setAttribute('aria-expanded', String(open));
+    const chevron = document.getElementById('kira-quick-chevron');
+    if (chevron) chevron.textContent = open ? '−' : '＋';
+  });
+  const conversationToggle = document.getElementById('chat-conversation-toggle');
+  const conversationList = document.getElementById('chat-conversation-list');
+  conversationToggle?.addEventListener('click', () => {
+    if (!conversationList) return;
+    const open = conversationList.style.display === 'none' || !conversationList.style.display;
+    conversationList.style.display = open ? 'block' : 'none';
+    conversationList.hidden = !open;
+    conversationToggle.setAttribute('aria-expanded', String(open));
+    const chevron = document.getElementById('chat-conversation-chevron');
+    if (chevron) chevron.textContent = open ? '−' : '＋';
+  });
+  document.getElementById('user-chat-target')?.addEventListener('change', () => {
+    chatCurrentMessages = [];
+    renderUserChatMessages([]);
+    stopConversationListener();
+    startConversationListener();
+  });
+  document.getElementById('user-chat-input')?.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); window.sendUserMessage(); } });
+  if ('Notification' in window && Notification.permission === 'default') {
+    // Minta izin notifikasi setelah pengguna membuka widget, bukan otomatis saat halaman dimuat.
+    document.getElementById('ai-chat-toggle-btn')?.addEventListener('click', () => {
+      if (Notification.permission === 'default') Notification.requestPermission();
+    });
+  }
+}
+document.addEventListener('DOMContentLoaded', initChatWidget);
+</script>
+</body>
+</html>
