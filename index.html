@@ -4267,7 +4267,9 @@ async function compressAvatarImage(file) {
                         wrapper.dataset.renderState = 'waiting';
                         wrapper.style.width = `${Math.floor(firstCssViewport.width)}px`;
                         wrapper.style.height = `${Math.floor(firstCssViewport.height)}px`;
-                        wrapper.style.maxWidth = '100%';
+                        wrapper.style.maxWidth = 'none';
+                        wrapper.style.flex = '0 0 auto';
+                        wrapper.style.zoom = String(reviewZoom);
                         wrapper.style.overflow = 'hidden';
 
                         const placeholder = document.createElement('div');
@@ -4393,9 +4395,16 @@ async function compressAvatarImage(file) {
             const label = document.getElementById('review-zoom-label');
             if (!stack) return;
 
-            // Jangan ubah lebar panel atau skala toolbar; hanya area PDF yang diperbesar.
-            stack.style.zoom = String(reviewZoom);
+            // Terapkan zoom ke setiap halaman secara terpisah, bukan ke stack.
+            // Dengan demikian rasio lebar/tinggi PDF tidak berubah dan halaman
+            // tidak mengalami reflow atau peregangan saat diperbesar.
+            stack.style.zoom = '1';
             stack.style.width = '100%';
+            stack.querySelectorAll('.pdf-page-canvas-wrapper').forEach(page => {
+                page.style.zoom = String(reviewZoom);
+                page.style.maxWidth = 'none';
+                page.style.flex = '0 0 auto';
+            });
             if (scroll) {
                 scroll.style.overflowX = reviewZoom > 1 ? 'auto' : 'hidden';
                 scroll.style.overflowY = 'auto';
