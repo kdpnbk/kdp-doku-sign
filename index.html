@@ -943,7 +943,7 @@
                                     <div id="signature-review-paraf" class="hidden border border-panel rounded-lg p-2 bg-panel space-y-2">
                                         <div class="text-[10px] font-bold text-heading">Preview hasil PNG transparan</div>
                                         <div class="h-56 min-h-[220px] rounded-lg flex items-center justify-center overflow-auto p-2" style="background-color:#e5e7eb;background-image:linear-gradient(45deg,#f8fafc 25%,transparent 25%),linear-gradient(-45deg,#f8fafc 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#f8fafc 75%),linear-gradient(-45deg,transparent 75%,#f8fafc 75%);background-size:16px 16px;background-position:0 0,0 8px,8px -8px,-8px 0;">
-                                            <img id="signature-review-image-paraf" class="max-w-full max-h-[208px] w-auto h-auto object-contain" alt="Preview Paraf transparan">
+                                            <img id="signature-review-image-paraf" class="w-full h-full max-h-[208px] object-contain object-center" alt="Preview Paraf transparan">
                                         </div>
                                         <div class="flex flex-wrap justify-end gap-2">
                                             <button type="button" onclick="discardSignatureReview('paraf')" class="px-3 py-1.5 rounded border border-panel text-heading text-xs">Buang hasil</button>
@@ -981,7 +981,7 @@
                                     <div id="signature-review-ttd" class="hidden border border-panel rounded-lg p-2 bg-panel space-y-2">
                                         <div class="text-[10px] font-bold text-heading">Preview hasil PNG transparan</div>
                                         <div class="h-56 min-h-[220px] rounded-lg flex items-center justify-center overflow-auto p-2" style="background-color:#e5e7eb;background-image:linear-gradient(45deg,#f8fafc 25%,transparent 25%),linear-gradient(-45deg,#f8fafc 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#f8fafc 75%),linear-gradient(-45deg,transparent 75%,#f8fafc 75%);background-size:16px 16px;background-position:0 0,0 8px,8px -8px,-8px 0;">
-                                            <img id="signature-review-image-ttd" class="max-w-full max-h-[208px] w-auto h-auto object-contain" alt="Preview Tanda Tangan transparan">
+                                            <img id="signature-review-image-ttd" class="w-full h-full max-h-[208px] object-contain object-center" alt="Preview Tanda Tangan transparan">
                                         </div>
                                         <div class="flex flex-wrap justify-end gap-2">
                                             <button type="button" onclick="discardSignatureReview('ttd')" class="px-3 py-1.5 rounded border border-panel text-heading text-xs">Buang hasil</button>
@@ -2889,14 +2889,14 @@ function calculateRemainingDays(doc) {
             const parafBox = document.getElementById('profile-paraf-preview-box');
             if (parafBox) {
                 parafBox.innerHTML = currentUser.parafPng 
-                    ? `<img src="${currentUser.parafPng}" class="w-full h-full object-contain object-center" />` 
+                    ? `<img src="${currentUser.parafPng}" class="w-full h-full object-fill" style="object-position:center" />` 
                     : `<span class="text-[9px] text-sub italic">Kosong</span>`;
             }
 
             const ttdBox = document.getElementById('profile-ttd-preview-box');
             if (ttdBox) {
                 ttdBox.innerHTML = currentUser.ttdPng 
-                    ? `<img src="${currentUser.ttdPng}" class="w-full h-full object-contain object-center" />` 
+                    ? `<img src="${currentUser.ttdPng}" class="w-full h-full object-fill" style="object-position:center" />` 
                     : `<span class="text-[9px] text-sub italic">Kosong</span>`;
             }
         }
@@ -3148,11 +3148,11 @@ let isAIChatOpen = false;
             output.height = 600;
 
             const outCtx = output.getContext('2d');
-            const safeW = output.width * 0.90;
-            const safeH = output.height * 0.84;
-            const fitScale = Math.min(safeW / cropW, safeH / cropH);
-            const drawW = cropW * fitScale;
-            const drawH = cropH * fitScale;
+            // Isi frame sesuai bentuk area preview aktif: peregangan ringan pada
+            // sumbu X/Y disengaja agar paraf yang sangat ramping tidak tampak
+            // seperti titik. Tidak ada lagi ruang transparan berlebihan.
+            const drawW = output.width * 0.90;
+            const drawH = output.height * 0.84;
             const drawX = (output.width - drawW) / 2;
             const drawY = (output.height - drawH) / 2;
             outCtx.clearRect(0, 0, output.width, output.height);
