@@ -4008,7 +4008,7 @@ let isAIChatOpen = false;
             const handlePlacementAction = (clientX, clientY) => {
                 if (!activeStandbyType) return;
                 const rect = wrapperDiv.getBoundingClientRect();
-                const pt = { x: clientX - rect.left, y: clientY - rect.top };
+                const pt = { x: (clientX - rect.left) / reviewZoom, y: (clientY - rect.top) / reviewZoom };
 
                 const currentType = activeStandbyType;
                 activeStandbyType = null;
@@ -4119,10 +4119,10 @@ let isAIChatOpen = false;
                     div.className = `placed-stamp-item absolute border border-premium-gold/70 bg-black/20 select-none`;
                     div.setAttribute('data-id', s.id);
                     
-                    div.style.left = s.x + 'px'; 
-                    div.style.top = s.y + 'px'; 
-                    div.style.width = s.width + 'px'; 
-                    div.style.height = s.height + 'px';
+                    div.style.left = (s.x * reviewZoom) + 'px'; 
+                    div.style.top = (s.y * reviewZoom) + 'px'; 
+                    div.style.width = (s.width * reviewZoom) + 'px'; 
+                    div.style.height = (s.height * reviewZoom) + 'px';
                     div.style.transform = `rotate(${s.rotation || 0}deg)`;
                     div.style.borderColor = s.color || '#d4af37';
 
@@ -4161,7 +4161,7 @@ let isAIChatOpen = false;
                     else if (s.type === 'highlight') inner = `<div class="w-full h-full border pointer-events-none" style="background-color:${s.color}60; border-color:${s.color}"></div>`;
                     else if (s.type === 'redline') inner = `<div class="w-full h-1 my-auto pointer-events-none" style="background-color:${s.color}"></div>`;
                     else if (s.type === 'text_custom') {
-                        inner = `<div style="font-size:${s.fontSize}px; color:${s.color}; white-space:pre-wrap; background: transparent;" class="w-full h-full p-1 pointer-events-none overflow-hidden">${s.text}</div>`;
+                        inner = `<div style="font-size:${s.fontSize * reviewZoom}px; color:${s.color}; white-space:pre-wrap; background: transparent;" class="w-full h-full p-1 pointer-events-none overflow-hidden">${s.text}</div>`;
                     }
                     
                     div.innerHTML += inner;
@@ -4208,15 +4208,15 @@ let isAIChatOpen = false;
                         let isDragging = false, startX, startY;
                         const startDrag = (clientX, clientY) => {
                             isDragging = true;
-                            startX = clientX - s.x;
-                            startY = clientY - s.y;
+                            startX = clientX - (s.x * reviewZoom);
+                            startY = clientY - (s.y * reviewZoom);
                         };
                         const onDrag = (clientX, clientY) => {
                             if (!isDragging) return;
-                            s.x = Math.max(0, clientX - startX);
-                            s.y = Math.max(0, clientY - startY);
-                            div.style.left = s.x + 'px';
-                            div.style.top = s.y + 'px';
+                            s.x = Math.max(0, (clientX - startX) / reviewZoom);
+                            s.y = Math.max(0, (clientY - startY) / reviewZoom);
+                            div.style.left = (s.x * reviewZoom) + 'px';
+                            div.style.top = (s.y * reviewZoom) + 'px';
                         };
                         const endDrag = () => { isDragging = false; };
 
@@ -4245,9 +4245,9 @@ let isAIChatOpen = false;
                         resizeHandle.onmousedown = (e) => { isResizing = true; initW = s.width; initH = s.height; initMouseX = e.clientX; initMouseY = e.clientY; e.stopPropagation(); };
                         window.addEventListener('mousemove', (e) => {
                             if (!isResizing) return;
-                            s.width = Math.max(30, initW + (e.clientX - initMouseX));
-                            s.height = Math.max(20, initH + (e.clientY - initMouseY));
-                            div.style.width = s.width + 'px'; div.style.height = s.height + 'px';
+                            s.width = Math.max(30, initW + (e.clientX - initMouseX) / reviewZoom);
+                            s.height = Math.max(20, initH + (e.clientY - initMouseY) / reviewZoom);
+                            div.style.width = (s.width * reviewZoom) + 'px'; div.style.height = (s.height * reviewZoom) + 'px';
                         });
                         window.addEventListener('mouseup', () => { isResizing = false; });
 
@@ -4259,9 +4259,9 @@ let isAIChatOpen = false;
                         window.addEventListener('touchmove', (e) => {
                             if (!isResizing) return;
                             const t = e.touches[0];
-                            s.width = Math.max(30, initW + (t.clientX - initMouseX));
-                            s.height = Math.max(20, initH + (t.clientY - initMouseY));
-                            div.style.width = s.width + 'px'; div.style.height = s.height + 'px';
+                            s.width = Math.max(30, initW + (t.clientX - initMouseX) / reviewZoom);
+                            s.height = Math.max(20, initH + (t.clientY - initMouseY) / reviewZoom);
+                            div.style.width = (s.width * reviewZoom) + 'px'; div.style.height = (s.height * reviewZoom) + 'px';
                         }, { passive: true });
                         window.addEventListener('touchend', () => { isResizing = false; });
                     }
@@ -4988,7 +4988,7 @@ async function compressAvatarImage(file) {
                             const cssViewport = page.getViewport({ scale: pageCssScale });
                             // Batasi pixel ratio agar preview tidak membuat canvas terlalu besar.
                             const pixelRatio = Math.min(1.5, Math.max(1, window.devicePixelRatio || 1));
-                            const renderViewport = page.getViewport({ scale: pageCssScale * pixelRatio });
+                            const renderViewport = page.getViewport({ scale: pageCssScale * reviewZoom * pixelRatio });
 
                             wrapper.dataset.baseWidth = String(Math.floor(cssViewport.width));
                             wrapper.dataset.baseHeight = String(Math.floor(cssViewport.height));
@@ -5000,8 +5000,8 @@ async function compressAvatarImage(file) {
                             const canvas = document.createElement('canvas');
                             canvas.width = Math.max(1, Math.floor(renderViewport.width));
                             canvas.height = Math.max(1, Math.floor(renderViewport.height));
-                            canvas.style.width = `${Math.floor(cssViewport.width)}px`;
-                            canvas.style.height = `${Math.floor(cssViewport.height)}px`;
+                            canvas.style.width = `${Math.floor(cssViewport.width * reviewZoom)}px`;
+                            canvas.style.height = `${Math.floor(cssViewport.height * reviewZoom)}px`;
                             canvas.style.display = 'block';
 
                             const layer = document.getElementById(`stamps-layer-page-${pageNum}`);
@@ -5078,36 +5078,72 @@ async function compressAvatarImage(file) {
         let reviewPinchAnchorY = 0;
         let reviewPinchActive = false;
 
+        let reviewZoomRenderToken = 0;
+        async function rerenderReviewCanvasesAtZoom() {
+            const token = ++reviewZoomRenderToken;
+            const stack = document.getElementById('pdf-pages-stack-container');
+            if (!stack || !loadedPdfDocument) return;
+            const pixelRatio = Math.min(2.5, Math.max(1.5, window.devicePixelRatio || 1));
+            const wrappers = [...stack.querySelectorAll('.pdf-page-canvas-wrapper')];
+            for (const wrapper of wrappers) {
+                if (token !== reviewZoomRenderToken) return;
+                const pageNum = Number(wrapper.dataset.pageNumber);
+                if (!pageNum || wrapper.dataset.renderState !== 'rendered') continue;
+                try {
+                    const page = await loadedPdfDocument.getPage(pageNum);
+                    if (token !== reviewZoomRenderToken) return;
+                    const baseWidth = Number(wrapper.dataset.baseWidth);
+                    if (!baseWidth) continue;
+                    const baseViewport = page.getViewport({ scale: 1 });
+                    const baseScale = baseWidth / baseViewport.width;
+                    const viewport = page.getViewport({ scale: baseScale * reviewZoom * pixelRatio });
+                    const canvas = wrapper.querySelector('canvas');
+                    if (!canvas) continue;
+                    canvas.width = Math.max(1, Math.ceil(viewport.width));
+                    canvas.height = Math.max(1, Math.ceil(viewport.height));
+                    canvas.style.width = `${Math.round(baseWidth * reviewZoom)}px`;
+                    canvas.style.height = `${Math.round(Number(wrapper.dataset.baseHeight) * reviewZoom)}px`;
+                    const context = canvas.getContext('2d', { alpha: false });
+                    await page.render({ canvasContext: context, viewport }).promise;
+                } catch (error) {
+                    console.warn('Render ulang PDF pada zoom gagal:', error);
+                }
+            }
+            if (token === reviewZoomRenderToken) renderAllStampsLayers();
+        }
+
         function applyReviewZoom() {
             const stack = document.getElementById('pdf-pages-stack-container');
             const scroll = document.getElementById('pdf-scroll-view');
             const label = document.getElementById('review-zoom-label');
             if (!stack) return;
 
-            // Besarkan dimensi layout setiap halaman secara proporsional.
-            // Tidak memakai CSS zoom/transform pada stack sehingga rasio PDF
-            // dan koordinat layer paraf/TTD tetap sama.
             stack.style.zoom = '1';
             stack.style.width = 'max-content';
             const pages = stack.querySelectorAll('.pdf-page-canvas-wrapper');
             pages.forEach(page => {
-                const baseWidth = Number(page.dataset.baseWidth || page.dataset.originalWidth || page.style.width.replace('px',''));
-                const baseHeight = Number(page.dataset.baseHeight || page.dataset.originalHeight || page.style.height.replace('px',''));
+                const baseWidth = Number(page.dataset.baseWidth);
+                const baseHeight = Number(page.dataset.baseHeight);
                 if (!baseWidth || !baseHeight) return;
-                page.dataset.baseWidth = String(baseWidth);
-                page.dataset.baseHeight = String(baseHeight);
                 page.style.width = `${Math.round(baseWidth * reviewZoom)}px`;
                 page.style.height = `${Math.round(baseHeight * reviewZoom)}px`;
                 page.style.maxWidth = 'none';
                 page.style.flex = '0 0 auto';
                 page.style.zoom = '1';
+                const canvas = page.querySelector('canvas');
+                if (canvas) {
+                    canvas.style.width = `${Math.round(baseWidth * reviewZoom)}px`;
+                    canvas.style.height = `${Math.round(baseHeight * reviewZoom)}px`;
+                }
             });
             if (scroll) {
-                scroll.style.overflowX = reviewZoom > 1 ? 'auto' : 'hidden';
+                scroll.style.overflowX = 'auto';
                 scroll.style.overflowY = 'auto';
                 stack.style.alignItems = reviewZoom > 1 ? 'flex-start' : 'center';
             }
             if (label) label.textContent = `${Math.round(reviewZoom * 100)}%`;
+            renderAllStampsLayers();
+            rerenderReviewCanvasesAtZoom();
         }
 
         function changeReviewZoom(delta) {
@@ -5419,8 +5455,8 @@ async function compressAvatarImage(file) {
                 
                 const wrapper = document.getElementById(`pdf-page-wrapper-${s.page}`);
                 if (!wrapper) continue;
-                const wrapperWidth = wrapper.clientWidth;
-                const wrapperHeight = wrapper.clientHeight;
+                const wrapperWidth = Number(wrapper.dataset.baseWidth) || wrapper.clientWidth / reviewZoom;
+                const wrapperHeight = Number(wrapper.dataset.baseHeight) || wrapper.clientHeight / reviewZoom;
 
                 const scaleX = pageWidth / wrapperWidth;
                 const scaleY = pageHeight / wrapperHeight;
