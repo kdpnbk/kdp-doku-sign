@@ -398,7 +398,7 @@
                     <button type="button" onclick="toggleAuthForm('login')" class="text-sub hover:text-heading text-xs">✕ Tutup</button>
                 </div>
                 <div><label class="block text-[11px] font-medium text-heading mb-1">Nama Lengkap</label><input type="text" id="reg-fullname" class="w-full bg-input border border-panel rounded-lg px-3 py-1.5 text-xs text-heading"></div>
-                <div><label class="block text-[11px] font-medium text-heading mb-1">Email</label><input type="email" id="reg-email" placeholder="nama@perusahaan.com" class="w-full bg-input border border-panel rounded-lg px-3 py-1.5 text-xs text-heading"></div>
+                <div><label class="block text-[11px] font-medium text-heading mb-1">Email</label><input type="email" id="reg-email" placeholder="Masukkan email Anda..." class="w-full bg-input border border-panel rounded-lg px-3 py-1.5 text-xs text-heading"></div>
                 <div><label class="block text-[11px] font-medium text-heading mb-1">Username</label><input type="text" id="reg-username" class="w-full bg-input border border-panel rounded-lg px-3 py-1.5 text-xs text-heading"></div>
                 <div><label class="block text-[11px] font-medium text-heading mb-1">Posisi / Jabatan</label>
                     <select id="reg-position" class="w-full bg-input border border-panel rounded-lg px-3 py-1.5 text-xs text-heading">
@@ -427,6 +427,9 @@
                     </div>
                 </div>
                 <div class="space-y-2"><label class="block text-[11px] font-medium text-heading mb-1">Upload PNG Paraf</label><input type="file" id="reg-paraf-file" accept="image/png,image/jpeg,image/webp" class="w-full text-xs text-sub bg-input rounded-lg border border-panel">
+                    <button type="button" onclick="openSignatureCamera('reg-paraf')" class="mt-2 inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-panel text-heading text-xs font-medium bg-input">
+                        <span>📷</span> Buka Kamera untuk Paraf
+                    </button>
                 <div id="signature-review-reg-paraf" class="hidden border border-panel rounded-lg p-2 bg-panel space-y-2">
                     <div class="text-xs font-bold text-heading">Edit PNG Paraf — geser, cubit & crop</div>
                     <div id="editor-stage-reg-paraf" class="relative w-full h-56 rounded-lg overflow-hidden select-none"
@@ -454,6 +457,9 @@
                     </div>
                 </div></div>
                 <div class="space-y-2"><label class="block text-[11px] font-medium text-heading mb-1">Upload PNG TTD</label><input type="file" id="reg-ttd-file" accept="image/png,image/jpeg,image/webp" class="w-full text-xs text-sub bg-input rounded-lg border border-panel">
+                    <button type="button" onclick="openSignatureCamera('reg-ttd')" class="mt-2 inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-panel text-heading text-xs font-medium bg-input">
+                        <span>📷</span> Buka Kamera untuk TTD
+                    </button>
                 <div id="signature-review-reg-ttd" class="hidden border border-panel rounded-lg p-2 bg-panel space-y-2">
                     <div class="text-xs font-bold text-heading">Edit PNG TTD — geser, cubit & crop</div>
                     <div id="editor-stage-reg-ttd" class="relative w-full h-56 rounded-lg overflow-hidden select-none"
@@ -3055,7 +3061,7 @@ let isAIChatOpen = false;
             const modal = document.getElementById('signature-camera-modal');
             const title = document.getElementById('signature-camera-title');
             const video = document.getElementById('signature-camera-video');
-            title.textContent = type === 'paraf' ? 'Foto Paraf' : 'Foto Tanda Tangan';
+            title.textContent = type.includes('paraf') ? 'Foto Paraf' : 'Foto Tanda Tangan';
             modal.classList.remove('hidden');
             modal.classList.add('flex');
             try {
