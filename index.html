@@ -942,8 +942,8 @@
                                     <p class="text-[10px] text-sub">Ambil foto kertas putih atau pilih foto dari galeri. Hasil akan diproses dan ditinjau sebelum disimpan.</p>
                                     <div id="signature-review-paraf" class="hidden border border-panel rounded-lg p-2 bg-panel space-y-2">
                                         <div class="text-[10px] font-bold text-heading">Preview hasil PNG transparan</div>
-                                        <div class="min-h-[90px] rounded-lg flex items-center justify-center overflow-auto" style="background-color:#e5e7eb;background-image:linear-gradient(45deg,#f8fafc 25%,transparent 25%),linear-gradient(-45deg,#f8fafc 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#f8fafc 75%),linear-gradient(-45deg,transparent 75%,#f8fafc 75%);background-size:16px 16px;background-position:0 0,0 8px,8px -8px,-8px 0;">
-                                            <img id="signature-review-image-paraf" class="max-w-full max-h-40 object-contain" alt="Preview Paraf transparan">
+                                        <div class="h-56 min-h-[220px] rounded-lg flex items-center justify-center overflow-auto p-2" style="background-color:#e5e7eb;background-image:linear-gradient(45deg,#f8fafc 25%,transparent 25%),linear-gradient(-45deg,#f8fafc 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#f8fafc 75%),linear-gradient(-45deg,transparent 75%,#f8fafc 75%);background-size:16px 16px;background-position:0 0,0 8px,8px -8px,-8px 0;">
+                                            <img id="signature-review-image-paraf" class="max-w-full max-h-[208px] w-auto h-auto object-contain" alt="Preview Paraf transparan">
                                         </div>
                                         <div class="flex flex-wrap justify-end gap-2">
                                             <button type="button" onclick="discardSignatureReview('paraf')" class="px-3 py-1.5 rounded border border-panel text-heading text-xs">Buang hasil</button>
@@ -980,8 +980,8 @@
                                     <p class="text-[10px] text-sub">Ambil foto kertas putih atau pilih foto dari galeri. Hasil akan diproses dan ditinjau sebelum disimpan.</p>
                                     <div id="signature-review-ttd" class="hidden border border-panel rounded-lg p-2 bg-panel space-y-2">
                                         <div class="text-[10px] font-bold text-heading">Preview hasil PNG transparan</div>
-                                        <div class="min-h-[90px] rounded-lg flex items-center justify-center overflow-auto" style="background-color:#e5e7eb;background-image:linear-gradient(45deg,#f8fafc 25%,transparent 25%),linear-gradient(-45deg,#f8fafc 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#f8fafc 75%),linear-gradient(-45deg,transparent 75%,#f8fafc 75%);background-size:16px 16px;background-position:0 0,0 8px,8px -8px,-8px 0;">
-                                            <img id="signature-review-image-ttd" class="max-w-full max-h-40 object-contain" alt="Preview Tanda Tangan transparan">
+                                        <div class="h-56 min-h-[220px] rounded-lg flex items-center justify-center overflow-auto p-2" style="background-color:#e5e7eb;background-image:linear-gradient(45deg,#f8fafc 25%,transparent 25%),linear-gradient(-45deg,#f8fafc 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#f8fafc 75%),linear-gradient(-45deg,transparent 75%,#f8fafc 75%);background-size:16px 16px;background-position:0 0,0 8px,8px -8px,-8px 0;">
+                                            <img id="signature-review-image-ttd" class="max-w-full max-h-[208px] w-auto h-auto object-contain" alt="Preview Tanda Tangan transparan">
                                         </div>
                                         <div class="flex flex-wrap justify-end gap-2">
                                             <button type="button" onclick="discardSignatureReview('ttd')" class="px-3 py-1.5 rounded border border-panel text-heading text-xs">Buang hasil</button>
@@ -1148,7 +1148,7 @@
                 <div id="mobile-pdf-container-wrapper" class="flex-1 relative overflow-hidden bg-app flex flex-col">
                     <div id="pdf-scroll-view" class="flex-1 overflow-auto p-1 flex flex-col items-center relative select-none" onscroll="handlePdfScrollSync(this)">
                         <div id="pdf-pages-stack-container" class="relative flex flex-col items-center w-full"></div>
-                        <div id="standby-cursor-stamp" class="absolute hidden pointer-events-none z-40 border-2 border-dashed border-premium-gold p-1 bg-black/40 shadow-2xl" style="width:120px; height:50px;">
+                        <div id="standby-cursor-stamp" class="absolute hidden pointer-events-none z-40 border-2 border-dashed border-premium-gold p-1 bg-black/40 shadow-2xl" style="width:110px; height:60px;">
                             <div id="standby-stamp-content" class="w-full h-full flex items-center justify-center font-bold"></div>
                         </div>
                     </div>
@@ -3109,7 +3109,7 @@ let isAIChatOpen = false;
             ctx.putImageData(original, 0, 0);
 
             // Pangkas area kosong dengan margin agar ujung goresan tidak terpotong.
-            const pad = Math.max(10, Math.round(Math.max(maxX - minX, maxY - minY) * 0.06));
+            const pad = Math.max(4, Math.round(Math.max(maxX - minX, maxY - minY) * 0.025));
             const cropX = Math.max(0, minX - pad);
             const cropY = Math.max(0, minY - pad);
             const cropW = Math.min(width - cropX, maxX - minX + 1 + pad * 2);
@@ -3585,6 +3585,15 @@ let isAIChatOpen = false;
             else if (type === 'text') html = `<span class="text-xs font-bold pointer-events-none" style="color:${color}">📝 Teks</span>`;
 
             const standby = document.getElementById('standby-cursor-stamp');
+            const standbySizes = {
+                paraf: [110, 60], ttd: [210, 82],
+                check: [40, 40], cross: [40, 40],
+                highlight: [140, 30], redline: [150, 12],
+                text: [100, 40], text_custom: [100, 40]
+            };
+            const standbySize = standbySizes[type] || [110, 60];
+            standby.style.width = `${standbySize[0]}px`;
+            standby.style.height = `${standbySize[1]}px`;
             document.getElementById('standby-stamp-content').innerHTML = html;
             standby.classList.remove('hidden');
             showToast(`Mode ${type.toUpperCase()} aktif. Ketuk pada dokumen.`, 2000);
@@ -3602,8 +3611,8 @@ let isAIChatOpen = false;
                 const mouseY = e.clientY - rect.top;
 
                 if (activeStandbyType) {
-                    standby.style.left = Math.max(0, mouseX - 60) + 'px';
-                    standby.style.top = Math.max(0, mouseY - 25) + 'px';
+                    standby.style.left = Math.max(0, mouseX - standby.offsetWidth / 2) + 'px';
+                    standby.style.top = Math.max(0, mouseY - standby.offsetHeight / 2) + 'px';
                 }
             };
 
@@ -3621,8 +3630,8 @@ let isAIChatOpen = false;
                     return;
                 }
 
-                let w = currentType === 'ttd' ? 160 : (currentType === 'paraf' ? 80 : 100);
-                let h = currentType === 'ttd' ? 65 : (currentType === 'paraf' ? 45 : 40);
+                let w = currentType === 'ttd' ? 210 : (currentType === 'paraf' ? 110 : 100);
+                let h = currentType === 'ttd' ? 82 : (currentType === 'paraf' ? 60 : 40);
                 if (['check','cross'].includes(currentType)) { w = 40; h = 40; }
                 else if (currentType === 'highlight') { w = 140; h = 30; }
                 else if (currentType === 'redline') { w = 150; h = 12; }
