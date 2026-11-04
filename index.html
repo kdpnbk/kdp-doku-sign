@@ -263,6 +263,38 @@
         #mobile-menu-toggle { display: none !important; }
         #mobile-bottom-action-panel { display: none !important; }
       }
+
+      /* Fallback responsif untuk kondisi Tailwind CDN tidak termuat.
+         Pastikan toolbar zoom dan panel otorisasi tetap tampil di desktop. */
+      @media (min-width: 1024px) {
+        #preview-modal-content > .flex-1.overflow-hidden {
+          display: flex !important;
+          flex-direction: row !important;
+        }
+        #desktop-pdf-zoom-controls {
+          display: flex !important;
+          align-items: center !important;
+          visibility: visible !important;
+        }
+        #mobile-pdf-container-wrapper {
+          flex: 1 1 auto !important;
+          min-width: 0 !important;
+          width: auto !important;
+        }
+        #mobile-bottom-action-panel {
+          display: none !important;
+        }
+        #desktop-authorization-panel {
+          display: flex !important;
+          flex-direction: column !important;
+          width: 320px !important;
+          min-width: 320px !important;
+          flex: 0 0 320px !important;
+          overflow-y: auto !important;
+          background: var(--review-panel-bg, #ffffff);
+          border-left: 1px solid #e2e8f0 !important;
+        }
+      }
     </style>
 
     <script>
@@ -1121,7 +1153,7 @@
                     </div>
                 </div>
 
-                <div class="hidden lg:flex w-80 bg-panel border-l border-panel p-4 flex-col justify-between shrink-0 overflow-y-auto space-y-4">
+                <div id="desktop-authorization-panel" class="hidden lg:flex w-80 bg-panel border-l border-panel p-4 flex-col justify-between shrink-0 overflow-y-auto space-y-4">
                     <div class="space-y-3">
                         <div class="flex items-center justify-between">
                             <h4 class="text-[11px] font-bold text-premium-gold uppercase">Otorisasi & Stempel</h4>
