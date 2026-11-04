@@ -230,6 +230,8 @@
         #pdf-scroll-view {
           position: absolute !important; inset: 0 !important; overflow-y: auto !important; overflow-x: auto !important; padding: 4px 4px 0px 4px !important; -webkit-overflow-scrolling: touch !important;
         }
+        #desktop-pdf-zoom-controls { display: none !important; }
+        #pdf-scroll-view { touch-action: pan-x pan-y !important; }
 
         #pdf-pages-stack-container { width: 100% !important; display: flex !important; flex-direction: column !important; align-items: center !important; }
 
@@ -310,6 +312,46 @@
       if(!menu) return;
       const open = typeof force === 'boolean' ? force : !menu.classList.contains('menu-open');
       menu.classList.toggle('menu-open', open);
+    }
+
+    // Zoom PDF: pinch dua jari di ponsel, tombol +/- di PC.
+    let pdfZoomLevel = 1;
+    let pdfPinchStartDistance = 0;
+    function applyPdfZoom(value) {
+      pdfZoomLevel = Math.max(0.6, Math.min(2.5, value));
+      const stack = document.getElementById('pdf-pages-stack-container');
+      if (stack) stack.style.zoom = String(pdfZoomLevel);
+      const label = document.getElementById('pdf-zoom-label');
+      if (label) label.textContent = Math.round(pdfZoomLevel * 100) + '%';
+    }
+    function adjustPdfZoom(delta) { applyPdfZoom(pdfZoomLevel + delta); }
+    function resetPdfZoom() { applyPdfZoom(1); }
+    function setupPdfPinchZoom() {
+      const view = document.getElementById('pdf-scroll-view');
+      if (!view || view.dataset.pinchZoomReady === '1') return;
+      view.dataset.pinchZoomReady = '1';
+      view.addEventListener('touchstart', (event) => {
+        if (event.touches.length === 2) {
+          const dx = event.touches[0].clientX - event.touches[1].clientX;
+          const dy = event.touches[0].clientY - event.touches[1].clientY;
+          pdfPinchStartDistance = Math.hypot(dx, dy);
+        }
+      }, { passive: true });
+      view.addEventListener('touchmove', (event) => {
+        if (event.touches.length !== 2 || !pdfPinchStartDistance) return;
+        event.preventDefault();
+        const dx = event.touches[0].clientX - event.touches[1].clientX;
+        const dy = event.touches[0].clientY - event.touches[1].clientY;
+        const distance = Math.hypot(dx, dy);
+        if (distance > 0) {
+          const ratio = distance / pdfPinchStartDistance;
+          applyPdfZoom(pdfZoomLevel * ratio);
+          pdfPinchStartDistance = distance;
+        }
+      }, { passive: false });
+      const endPinch = () => { pdfPinchStartDistance = 0; };
+      view.addEventListener('touchend', endPinch, { passive: true });
+      view.addEventListener('touchcancel', endPinch, { passive: true });
     }
     </script>
 </head>
@@ -1076,6 +1118,12 @@
         <div id="preview-modal-content" class="bg-panel w-full h-[96vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-panel max-w-[98vw] relative">
             <div class="px-4 py-2 bg-panel border-b border-panel flex justify-between items-center z-20 shrink-0">
                 <h3 id="modal-title" class="font-bold text-xs text-heading truncate max-w-xs">Review Dokumen</h3>
+                <div id="desktop-pdf-zoom-controls" class="hidden md:flex items-center gap-1.5 ml-auto mr-3">
+                    <button type="button" onclick="adjustPdfZoom(-0.1)" class="px-3 py-1 rounded border border-panel bg-input text-heading font-bold" title="Perkecil">−</button>
+                    <span id="pdf-zoom-label" class="text-[10px] text-sub min-w-[42px] text-center">100%</span>
+                    <button type="button" onclick="adjustPdfZoom(0.1)" class="px-3 py-1 rounded border border-panel bg-input text-heading font-bold" title="Perbesar">+</button>
+                    <button type="button" onclick="resetPdfZoom()" class="px-2 py-1 rounded border border-panel bg-input text-heading text-[10px]">Reset</button>
+                </div>
                 <button type="button" onclick="closeModal()" class="text-sub hover:text-rose-500 font-mono text-base px-2 py-1">&times;</button>
             </div>
 
@@ -4077,6 +4125,7 @@ async function compressAvatarImage(file) {
             
             const previewModal = document.getElementById('preview-modal');
             previewModal.classList.remove('hidden');
+            resetPdfZoom();
             
             const mobileBar = document.getElementById('mobile-pdf-action-bar');
             if (mobileBar) mobileBar.style.display = window.innerWidth <= 767 ? 'flex' : 'none';
@@ -5544,5 +5593,11 @@ function initChatWidget() {
 }
 document.addEventListener('DOMContentLoaded', initChatWidget);
 </script>
+
+
+    window.addEventListener('load', () => {
+      setupPdfPinchZoom();
+      resetPdfZoom();
+    });
 </body>
 </html>
