@@ -2118,7 +2118,7 @@ function calculateRemainingDays(doc) {
             if (!fullname || !email || !username || !password) { alert('Nama lengkap, email, username, dan sandi wajib diisi.'); return; }
             if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { alert('Format email tidak valid.'); return; }
             if (!/^[a-z0-9._-]{3,32}$/.test(username)) { alert('Username harus 3–32 karakter: huruf kecil, angka, titik, garis bawah, atau tanda hubung.'); return; }
-            if (!['staff_kdp', 'kasir'].includes(position)) { alert('Pendaftaran mandiri hanya untuk Staff KDP dan Kasir. Role lainnya dibuat oleh Administrator.'); return; }
+            // Semua jabatan yang tersedia pada pilihan Posisi/Jabatan boleh mendaftar mandiri.
             if (password !== confirmPass) { alert('Sandi dan konfirmasi sandi tidak cocok!'); return; }
             if (password.length < 8) { alert('Gunakan sandi minimal 8 karakter.'); return; }
 
