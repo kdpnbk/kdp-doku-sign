@@ -942,8 +942,8 @@
                                     <p class="text-[10px] text-sub">Ambil foto kertas putih atau pilih foto dari galeri. Hasil akan diproses dan ditinjau sebelum disimpan.</p>
                                     <div id="signature-review-paraf" class="hidden border border-panel rounded-lg p-2 bg-panel space-y-2">
                                         <div class="text-[10px] font-bold text-heading">Preview hasil PNG transparan</div>
-                                        <div class="h-56 min-h-[220px] rounded-lg flex items-center justify-center overflow-auto p-2" style="background-color:#e5e7eb;background-image:linear-gradient(45deg,#f8fafc 25%,transparent 25%),linear-gradient(-45deg,#f8fafc 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#f8fafc 75%),linear-gradient(-45deg,transparent 75%,#f8fafc 75%);background-size:16px 16px;background-position:0 0,0 8px,8px -8px,-8px 0;">
-                                            <img id="signature-review-image-paraf" class="w-full h-full max-h-none object-contain object-center" style="transform:scale(3);transform-origin:center center;" alt="Preview Paraf transparan">
+                                        <div class="h-56 min-h-[220px] w-full rounded-lg flex items-center justify-center overflow-hidden p-2" style="background-color:#e5e7eb;background-image:linear-gradient(45deg,#f8fafc 25%,transparent 25%),linear-gradient(-45deg,#f8fafc 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#f8fafc 75%),linear-gradient(-45deg,transparent 75%,#f8fafc 75%);background-size:16px 16px;background-position:0 0,0 8px,8px -8px,-8px 0;">
+                                            <img id="signature-review-image-paraf" style="display:block;width:auto;height:auto;max-width:100%;max-height:100%;object-fit:contain;object-position:center center;transform:none;" alt="Preview Paraf transparan">
                                         </div>
                                         <div class="flex flex-wrap justify-end gap-2">
                                             <button type="button" onclick="discardSignatureReview('paraf')" class="px-3 py-1.5 rounded border border-panel text-heading text-xs">Buang hasil</button>
@@ -980,8 +980,8 @@
                                     <p class="text-[10px] text-sub">Ambil foto kertas putih atau pilih foto dari galeri. Hasil akan diproses dan ditinjau sebelum disimpan.</p>
                                     <div id="signature-review-ttd" class="hidden border border-panel rounded-lg p-2 bg-panel space-y-2">
                                         <div class="text-[10px] font-bold text-heading">Preview hasil PNG transparan</div>
-                                        <div class="h-56 min-h-[220px] rounded-lg flex items-center justify-center overflow-auto p-2" style="background-color:#e5e7eb;background-image:linear-gradient(45deg,#f8fafc 25%,transparent 25%),linear-gradient(-45deg,#f8fafc 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#f8fafc 75%),linear-gradient(-45deg,transparent 75%,#f8fafc 75%);background-size:16px 16px;background-position:0 0,0 8px,8px -8px,-8px 0;">
-                                            <img id="signature-review-image-ttd" class="w-full h-full max-h-none object-contain object-center" style="transform:scale(3);transform-origin:center center;" alt="Preview Tanda Tangan transparan">
+                                        <div class="h-56 min-h-[220px] w-full rounded-lg flex items-center justify-center overflow-hidden p-2" style="background-color:#e5e7eb;background-image:linear-gradient(45deg,#f8fafc 25%,transparent 25%),linear-gradient(-45deg,#f8fafc 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#f8fafc 75%),linear-gradient(-45deg,transparent 75%,#f8fafc 75%);background-size:16px 16px;background-position:0 0,0 8px,8px -8px,-8px 0;">
+                                            <img id="signature-review-image-ttd" style="display:block;width:auto;height:auto;max-width:100%;max-height:100%;object-fit:contain;object-position:center center;transform:none;" alt="Preview Tanda Tangan transparan">
                                         </div>
                                         <div class="flex flex-wrap justify-end gap-2">
                                             <button type="button" onclick="discardSignatureReview('ttd')" class="px-3 py-1.5 rounded border border-panel text-heading text-xs">Buang hasil</button>
@@ -3139,22 +3139,22 @@ let isAIChatOpen = false;
             const cropW = Math.min(width - cropX, inkW + padX * 2);
             const cropH = Math.min(height - cropY, inkH + padY * 2);
 
-            // Kanvas PNG memakai rasio landscape yang konsisten untuk paraf dan TTD.
-            // Sebelumnya kanvas mengikuti rasio potongan sumber; bila paraf tinggi/
-            // sempit, object-fit contain membuatnya tampak sangat kecil di preview.
-            // Kini goresan dipusatkan dan diperbesar untuk mengisi frame tanpa distorsi.
+            // Crop rapat mengikuti batas tinta, lalu tempatkan di kanvas landscape
+            // yang sesuai dengan frame checkerboard. Skala X dan Y SAMA agar
+            // paraf/TTD tidak gepeng, melebar, atau memanjang.
             const output = document.createElement('canvas');
             output.width = 1200;
             output.height = 600;
 
             const outCtx = output.getContext('2d');
-            // Isi frame sesuai bentuk area preview aktif: peregangan ringan pada
-            // sumbu X/Y disengaja agar paraf yang sangat ramping tidak tampak
-            // seperti titik. Tidak ada lagi ruang transparan berlebihan.
-            const drawW = output.width * 0.90;
-            const drawH = output.height * 0.84;
+            const safeW = output.width * 0.92;
+            const safeH = output.height * 0.86;
+            const uniformScale = Math.min(safeW / cropW, safeH / cropH);
+            const drawW = cropW * uniformScale;
+            const drawH = cropH * uniformScale;
             const drawX = (output.width - drawW) / 2;
             const drawY = (output.height - drawH) / 2;
+
             outCtx.clearRect(0, 0, output.width, output.height);
             outCtx.imageSmoothingEnabled = true;
             outCtx.imageSmoothingQuality = 'high';
