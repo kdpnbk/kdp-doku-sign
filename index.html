@@ -942,31 +942,31 @@
                                     <p class="text-[10px] text-sub">Ambil foto kertas putih atau pilih foto dari galeri. Hasil akan diproses dan ditinjau sebelum disimpan.</p>
                                     <div id="signature-review-paraf" class="hidden border border-panel rounded-lg p-2 bg-panel space-y-2">
                                         <div class="text-[10px] font-bold text-heading">Preview hasil PNG transparan</div>
-                                        <div class="h-56 min-h-[220px] w-full rounded-lg flex items-center justify-center overflow-hidden p-2" style="background-color:#e5e7eb;background-image:linear-gradient(45deg,#f8fafc 25%,transparent 25%),linear-gradient(-45deg,#f8fafc 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#f8fafc 75%),linear-gradient(-45deg,transparent 75%,#f8fafc 75%);background-size:16px 16px;background-position:0 0,0 8px,8px -8px,-8px 0;">
-                                            <img id="signature-review-image-paraf" style="display:block;width:auto;height:auto;max-width:100%;max-height:100%;object-fit:contain;object-position:center center;transform:none;" alt="Preview Paraf transparan">
+                                        
+                                        <div id="editor-stage-paraf" class="relative w-full h-56 rounded-lg overflow-hidden select-none"
+                                             style="touch-action:none;background-color:#e5e7eb;background-image:linear-gradient(45deg,#f8fafc 25%,transparent 25%),linear-gradient(-45deg,#f8fafc 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#f8fafc 75%),linear-gradient(-45deg,transparent 75%,#f8fafc 75%);background-size:16px 16px;background-position:0 0,0 8px,8px -8px,-8px 0;">
+                                            <img id="signature-review-image-paraf" alt="Preview paraf transparan"
+                                                 draggable="false"
+                                                 style="position:absolute;left:50%;top:50%;width:auto;height:auto;max-width:none;max-height:none;object-fit:fill;transform:translate(-50%,-50%);transform-origin:center center;pointer-events:none;user-select:none;">
+                                            <div id="crop-box-paraf" class="absolute border-2 border-dashed border-yellow-500"
+                                                 style="left:12%;top:12%;width:76%;height:76%;box-sizing:border-box;touch-action:none;">
+                                                <div class="absolute inset-0" style="pointer-events:none;background:rgba(234,179,8,.06);"></div>
+                                                <span data-crop-handle="move" class="absolute inset-0" style="cursor:move;touch-action:none;"></span>
+                                                <span data-crop-handle="nw" class="absolute -left-2 -top-2 w-5 h-5 rounded-full bg-yellow-500 border-2 border-white" style="touch-action:none;"></span>
+                                                <span data-crop-handle="ne" class="absolute -right-2 -top-2 w-5 h-5 rounded-full bg-yellow-500 border-2 border-white" style="touch-action:none;"></span>
+                                                <span data-crop-handle="sw" class="absolute -left-2 -bottom-2 w-5 h-5 rounded-full bg-yellow-500 border-2 border-white" style="touch-action:none;"></span>
+                                                <span data-crop-handle="se" class="absolute -right-2 -bottom-2 w-5 h-5 rounded-full bg-yellow-500 border-2 border-white" style="touch-action:none;"></span>
+                                                <span data-crop-handle="n" class="absolute left-1/2 -top-2 -translate-x-1/2 w-8 h-4 rounded bg-yellow-500 border border-white" style="touch-action:none;"></span>
+                                                <span data-crop-handle="s" class="absolute left-1/2 -bottom-2 -translate-x-1/2 w-8 h-4 rounded bg-yellow-500 border border-white" style="touch-action:none;"></span>
+                                                <span data-crop-handle="w" class="absolute -left-2 top-1/2 -translate-y-1/2 w-4 h-8 rounded bg-yellow-500 border border-white" style="touch-action:none;"></span>
+                                                <span data-crop-handle="e" class="absolute -right-2 top-1/2 -translate-y-1/2 w-4 h-8 rounded bg-yellow-500 border border-white" style="touch-action:none;"></span>
+                                            </div>
+                                        </div>
+                                        <div class="text-[11px] text-sub">Geser gambar untuk memindahkan • Cubit dua jari untuk mengubah skala • Tarik garis atau titik kuning untuk mengatur crop.</div>
+                                        <div class="flex justify-end">
+                                            <button type="button" onclick="applySignatureCrop('paraf')" class="px-3 py-1.5 rounded bg-premium-gold text-regal-black text-xs font-bold">Terapkan Posisi & Crop</button>
                                         </div>
 
-                                        <div class="rounded-lg border border-panel p-2 space-y-2 bg-input/40">
-                                            <div class="text-xs font-semibold text-heading">Atur crop dengan menggeser slider</div>
-                                            <div class="grid grid-cols-2 gap-x-3 gap-y-2">
-                                                <label class="text-[10px] text-sub">Kiri <input id="crop-paraf-left" type="range" min="0" max="35" value="0" step="1" class="w-full" oninput="updateSignatureCropPreview('paraf')"></label>
-                                                <label class="text-[10px] text-sub">Kanan <input id="crop-paraf-right" type="range" min="0" max="35" value="0" step="1" class="w-full" oninput="updateSignatureCropPreview('paraf')"></label>
-                                                <label class="text-[10px] text-sub">Atas <input id="crop-paraf-top" type="range" min="0" max="35" value="0" step="1" class="w-full" oninput="updateSignatureCropPreview('paraf')"></label>
-                                                <label class="text-[10px] text-sub">Bawah <input id="crop-paraf-bottom" type="range" min="0" max="35" value="0" step="1" class="w-full" oninput="updateSignatureCropPreview('paraf')"></label>
-                                            </div>
-                                            <div class="pt-2 border-t border-panel space-y-1">
-                                                <div class="flex items-center justify-between">
-                                                    <label for="scale-paraf" class="text-xs font-semibold text-heading">Skala ukuran aset</label>
-                                                    <span id="scale-paraf-value" class="text-xs font-bold text-premium-gold">100%</span>
-                                                </div>
-                                                <input id="scale-paraf" type="range" min="25" max="250" value="100" step="5"
-                                                    class="w-full" oninput="updateSignatureCropPreview('paraf')">
-                                                <div class="flex justify-between text-[10px] text-sub"><span>25% · Kecil</span><span>250% · Besar</span></div>
-                                            </div>
-                                            <div class="flex justify-end">
-                                                <button type="button" onclick="applySignatureCrop('paraf')" class="px-3 py-1.5 rounded bg-premium-gold text-regal-black text-xs font-bold">Terapkan Crop & Skala</button>
-                                            </div>
-                                        </div>
                                         <div class="flex flex-wrap justify-end gap-2">
                                             <button type="button" onclick="discardSignatureReview('paraf')" class="px-3 py-1.5 rounded border border-panel text-heading text-xs">Buang hasil</button>
                                             <button type="button" onclick="acceptSignatureReview('paraf')" class="px-3 py-1.5 rounded bg-premium-gold text-regal-black font-bold text-xs">Gunakan hasil ini</button>
@@ -1002,31 +1002,31 @@
                                     <p class="text-[10px] text-sub">Ambil foto kertas putih atau pilih foto dari galeri. Hasil akan diproses dan ditinjau sebelum disimpan.</p>
                                     <div id="signature-review-ttd" class="hidden border border-panel rounded-lg p-2 bg-panel space-y-2">
                                         <div class="text-[10px] font-bold text-heading">Preview hasil PNG transparan</div>
-                                        <div class="h-56 min-h-[220px] w-full rounded-lg flex items-center justify-center overflow-hidden p-2" style="background-color:#e5e7eb;background-image:linear-gradient(45deg,#f8fafc 25%,transparent 25%),linear-gradient(-45deg,#f8fafc 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#f8fafc 75%),linear-gradient(-45deg,transparent 75%,#f8fafc 75%);background-size:16px 16px;background-position:0 0,0 8px,8px -8px,-8px 0;">
-                                            <img id="signature-review-image-ttd" style="display:block;width:auto;height:auto;max-width:100%;max-height:100%;object-fit:contain;object-position:center center;transform:none;" alt="Preview Tanda Tangan transparan">
+                                        
+                                        <div id="editor-stage-ttd" class="relative w-full h-56 rounded-lg overflow-hidden select-none"
+                                             style="touch-action:none;background-color:#e5e7eb;background-image:linear-gradient(45deg,#f8fafc 25%,transparent 25%),linear-gradient(-45deg,#f8fafc 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#f8fafc 75%),linear-gradient(-45deg,transparent 75%,#f8fafc 75%);background-size:16px 16px;background-position:0 0,0 8px,8px -8px,-8px 0;">
+                                            <img id="signature-review-image-ttd" alt="Preview ttd transparan"
+                                                 draggable="false"
+                                                 style="position:absolute;left:50%;top:50%;width:auto;height:auto;max-width:none;max-height:none;object-fit:fill;transform:translate(-50%,-50%);transform-origin:center center;pointer-events:none;user-select:none;">
+                                            <div id="crop-box-ttd" class="absolute border-2 border-dashed border-yellow-500"
+                                                 style="left:12%;top:12%;width:76%;height:76%;box-sizing:border-box;touch-action:none;">
+                                                <div class="absolute inset-0" style="pointer-events:none;background:rgba(234,179,8,.06);"></div>
+                                                <span data-crop-handle="move" class="absolute inset-0" style="cursor:move;touch-action:none;"></span>
+                                                <span data-crop-handle="nw" class="absolute -left-2 -top-2 w-5 h-5 rounded-full bg-yellow-500 border-2 border-white" style="touch-action:none;"></span>
+                                                <span data-crop-handle="ne" class="absolute -right-2 -top-2 w-5 h-5 rounded-full bg-yellow-500 border-2 border-white" style="touch-action:none;"></span>
+                                                <span data-crop-handle="sw" class="absolute -left-2 -bottom-2 w-5 h-5 rounded-full bg-yellow-500 border-2 border-white" style="touch-action:none;"></span>
+                                                <span data-crop-handle="se" class="absolute -right-2 -bottom-2 w-5 h-5 rounded-full bg-yellow-500 border-2 border-white" style="touch-action:none;"></span>
+                                                <span data-crop-handle="n" class="absolute left-1/2 -top-2 -translate-x-1/2 w-8 h-4 rounded bg-yellow-500 border border-white" style="touch-action:none;"></span>
+                                                <span data-crop-handle="s" class="absolute left-1/2 -bottom-2 -translate-x-1/2 w-8 h-4 rounded bg-yellow-500 border border-white" style="touch-action:none;"></span>
+                                                <span data-crop-handle="w" class="absolute -left-2 top-1/2 -translate-y-1/2 w-4 h-8 rounded bg-yellow-500 border border-white" style="touch-action:none;"></span>
+                                                <span data-crop-handle="e" class="absolute -right-2 top-1/2 -translate-y-1/2 w-4 h-8 rounded bg-yellow-500 border border-white" style="touch-action:none;"></span>
+                                            </div>
+                                        </div>
+                                        <div class="text-[11px] text-sub">Geser gambar untuk memindahkan • Cubit dua jari untuk mengubah skala • Tarik garis atau titik kuning untuk mengatur crop.</div>
+                                        <div class="flex justify-end">
+                                            <button type="button" onclick="applySignatureCrop('ttd')" class="px-3 py-1.5 rounded bg-premium-gold text-regal-black text-xs font-bold">Terapkan Posisi & Crop</button>
                                         </div>
 
-                                        <div class="rounded-lg border border-panel p-2 space-y-2 bg-input/40">
-                                            <div class="text-xs font-semibold text-heading">Atur crop dengan menggeser slider</div>
-                                            <div class="grid grid-cols-2 gap-x-3 gap-y-2">
-                                                <label class="text-[10px] text-sub">Kiri <input id="crop-ttd-left" type="range" min="0" max="35" value="0" step="1" class="w-full" oninput="updateSignatureCropPreview('ttd')"></label>
-                                                <label class="text-[10px] text-sub">Kanan <input id="crop-ttd-right" type="range" min="0" max="35" value="0" step="1" class="w-full" oninput="updateSignatureCropPreview('ttd')"></label>
-                                                <label class="text-[10px] text-sub">Atas <input id="crop-ttd-top" type="range" min="0" max="35" value="0" step="1" class="w-full" oninput="updateSignatureCropPreview('ttd')"></label>
-                                                <label class="text-[10px] text-sub">Bawah <input id="crop-ttd-bottom" type="range" min="0" max="35" value="0" step="1" class="w-full" oninput="updateSignatureCropPreview('ttd')"></label>
-                                            </div>
-                                            <div class="pt-2 border-t border-panel space-y-1">
-                                                <div class="flex items-center justify-between">
-                                                    <label for="scale-ttd" class="text-xs font-semibold text-heading">Skala ukuran aset</label>
-                                                    <span id="scale-ttd-value" class="text-xs font-bold text-premium-gold">100%</span>
-                                                </div>
-                                                <input id="scale-ttd" type="range" min="25" max="250" value="100" step="5"
-                                                    class="w-full" oninput="updateSignatureCropPreview('ttd')">
-                                                <div class="flex justify-between text-[10px] text-sub"><span>25% · Kecil</span><span>250% · Besar</span></div>
-                                            </div>
-                                            <div class="flex justify-end">
-                                                <button type="button" onclick="applySignatureCrop('ttd')" class="px-3 py-1.5 rounded bg-premium-gold text-regal-black text-xs font-bold">Terapkan Crop & Skala</button>
-                                            </div>
-                                        </div>
                                         <div class="flex flex-wrap justify-end gap-2">
                                             <button type="button" onclick="discardSignatureReview('ttd')" class="px-3 py-1.5 rounded border border-panel text-heading text-xs">Buang hasil</button>
                                             <button type="button" onclick="acceptSignatureReview('ttd')" class="px-3 py-1.5 rounded bg-premium-gold text-regal-black font-bold text-xs">Gunakan hasil ini</button>
@@ -2990,7 +2990,10 @@ let isAIChatOpen = false;
         let signatureCaptureTarget = 'ttd';
         let signaturePendingPng = { paraf: null, ttd: null };
         let signatureCropBase = { paraf: null, ttd: null };
-        const signatureCropDefaults = () => ({ left: 0, right: 0, top: 0, bottom: 0 });
+        const signatureEditorState = {
+            paraf: { scale: 1, x: 0, y: 0, crop: { x: 0.12, y: 0.12, w: 0.76, h: 0.76 }, pointers: new Map(), gesture: null },
+            ttd:   { scale: 1, x: 0, y: 0, crop: { x: 0.12, y: 0.12, w: 0.76, h: 0.76 }, pointers: new Map(), gesture: null }
+        };
 
 
         async function openSignatureCamera(type) {
@@ -3233,97 +3236,196 @@ let isAIChatOpen = false;
                 img.src = url;
                 img.dataset.objectUrl = url;
                 preview.classList.remove('hidden');
+                installSignatureEditor(type);
+                initializeSignatureEditor(type);
             }, 'image/png');
         }
 
 
-        function getSignatureCropValues(type) {
-            const value = side => Math.max(0, Math.min(35,
-                Number(document.getElementById(`crop-${type}-${side}`)?.value || 0)));
-            return { left: value('left'), right: value('right'), top: value('top'), bottom: value('bottom') };
+
+        function signatureEditorElements(type) {
+            return {
+                stage: document.getElementById(`editor-stage-${type}`),
+                img: document.getElementById(`signature-review-image-${type}`),
+                box: document.getElementById(`crop-box-${type}`)
+            };
         }
 
-        function getSignatureScale(type) {
-            const slider = document.getElementById(`scale-${type}`);
-            return Math.max(25, Math.min(250, Number(slider?.value || 100))) / 100;
+        function updateSignatureEditor(type) {
+            const state = signatureEditorState[type];
+            const { stage, img, box } = signatureEditorElements(type);
+            if (!stage || !img || !box) return;
+            const rect = stage.getBoundingClientRect();
+            if (!img.dataset.baseWidth || !img.dataset.baseHeight) return;
+            const baseW = Number(img.dataset.baseWidth);
+            const baseH = Number(img.dataset.baseHeight);
+            img.style.width = `${baseW * state.scale}px`;
+            img.style.height = `${baseH * state.scale}px`;
+            img.style.left = `calc(50% + ${state.x}px)`;
+            img.style.top = `calc(50% + ${state.y}px)`;
+            box.style.left = `${state.crop.x * 100}%`;
+            box.style.top = `${state.crop.y * 100}%`;
+            box.style.width = `${state.crop.w * 100}%`;
+            box.style.height = `${state.crop.h * 100}%`;
         }
 
-        function updateSignatureCropPreview(type) {
-            const img = document.getElementById(`signature-review-image-${type}`);
-            if (!img) return;
-            const c = getSignatureCropValues(type);
-            const top = Math.min(70, c.top);
-            const right = Math.min(70, c.right);
-            const bottom = Math.min(70, c.bottom);
-            const left = Math.min(70, c.left);
-            const scale = getSignatureScale(type);
-            img.style.clipPath = `inset(${top}% ${right}% ${bottom}% ${left}%)`;
-            img.style.transform = `scale(${scale})`;
-            const value = document.getElementById(`scale-${type}-value`);
-            if (value) value.textContent = `${Math.round(scale * 100)}%`;
+        function initializeSignatureEditor(type) {
+            const state = signatureEditorState[type];
+            const { stage, img, box } = signatureEditorElements(type);
+            if (!stage || !img || !box || !img.src) return;
+            const initialize = () => {
+                const stageRect = stage.getBoundingClientRect();
+                const iw = img.naturalWidth, ih = img.naturalHeight;
+                if (!iw || !ih || !stageRect.width) return;
+                const fit = Math.min((stageRect.width * 0.82) / iw, (stageRect.height * 0.82) / ih);
+                state.scale = 1;
+                state.x = 0;
+                state.y = 0;
+                state.crop = { x: 0.12, y: 0.12, w: 0.76, h: 0.76 };
+                img.dataset.baseWidth = String(iw * fit);
+                img.dataset.baseHeight = String(ih * fit);
+                updateSignatureEditor(type);
+            };
+            if (img.complete && img.naturalWidth) initialize();
+            else img.addEventListener('load', initialize, { once: true });
+        }
+
+        function installSignatureEditor(type) {
+            const state = signatureEditorState[type];
+            const { stage, img, box } = signatureEditorElements(type);
+            if (!stage || stage.dataset.editorReady === '1') return;
+            stage.dataset.editorReady = '1';
+
+            const point = e => {
+                const r = stage.getBoundingClientRect();
+                return { x: e.clientX - r.left, y: e.clientY - r.top };
+            };
+            const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+
+            stage.addEventListener('pointerdown', e => {
+                if (e.pointerType === 'mouse' && e.button !== 0) return;
+                e.preventDefault();
+                stage.setPointerCapture(e.pointerId);
+                const p = point(e);
+                const handle = e.target.closest('[data-crop-handle]');
+                state.pointers.set(e.pointerId, p);
+                if (state.pointers.size === 2) {
+                    const pts = [...state.pointers.values()];
+                    state.gesture = { mode: 'pinch', startDistance: distance(pts[0], pts[1]), startScale: state.scale };
+                } else if (handle) {
+                    const r = stage.getBoundingClientRect();
+                    state.gesture = {
+                        mode: 'crop', handle: handle.dataset.cropHandle,
+                        start: p, crop: { ...state.crop }, stageW: r.width, stageH: r.height
+                    };
+                } else {
+                    state.gesture = { mode: 'move-image', start: p, x: state.x, y: state.y };
+                }
+            });
+
+            stage.addEventListener('pointermove', e => {
+                if (!state.pointers.has(e.pointerId)) return;
+                const p = point(e);
+                state.pointers.set(e.pointerId, p);
+                const pts = [...state.pointers.values()];
+                if (pts.length >= 2 && state.gesture?.mode === 'pinch') {
+                    const d = distance(pts[0], pts[1]);
+                    if (state.gesture.startDistance > 0) {
+                        state.scale = Math.max(0.25, Math.min(5,
+                            state.gesture.startScale * d / state.gesture.startDistance));
+                        updateSignatureEditor(type);
+                    }
+                    return;
+                }
+                const g = state.gesture;
+                if (!g) return;
+                if (g.mode === 'move-image') {
+                    state.x = g.x + p.x - g.start.x;
+                    state.y = g.y + p.y - g.start.y;
+                    updateSignatureEditor(type);
+                } else if (g.mode === 'crop') {
+                    const dx = (p.x - g.start.x) / g.stageW;
+                    const dy = (p.y - g.start.y) / g.stageH;
+                    const c = { ...g.crop };
+                    const min = 0.08;
+                    const h = g.handle;
+                    if (h === 'move') {
+                        c.x = Math.max(0, Math.min(1 - c.w, g.crop.x + dx));
+                        c.y = Math.max(0, Math.min(1 - c.h, g.crop.y + dy));
+                    } else {
+                        if (h.includes('w')) { const right = g.crop.x + g.crop.w; c.x = Math.max(0, Math.min(right - min, g.crop.x + dx)); c.w = right - c.x; }
+                        if (h.includes('e')) c.w = Math.max(min, Math.min(1 - c.x, g.crop.w + dx));
+                        if (h.includes('n')) { const bottom = g.crop.y + g.crop.h; c.y = Math.max(0, Math.min(bottom - min, g.crop.y + dy)); c.h = bottom - c.y; }
+                        if (h.includes('s')) c.h = Math.max(min, Math.min(1 - c.y, g.crop.h + dy));
+                    }
+                    state.crop = c;
+                    updateSignatureEditor(type);
+                }
+            });
+
+            const end = e => {
+                state.pointers.delete(e.pointerId);
+                if (state.pointers.size === 0) state.gesture = null;
+                else if (state.pointers.size === 1) {
+                    const remaining = [...state.pointers.values()][0];
+                    state.gesture = { mode: 'move-image', start: remaining, x: state.x, y: state.y };
+                }
+            };
+            stage.addEventListener('pointerup', end);
+            stage.addEventListener('pointercancel', end);
+            stage.addEventListener('lostpointercapture', end);
         }
 
         async function applySignatureCrop(type) {
             const baseFile = signatureCropBase[type] || signaturePendingPng[type];
-            if (!baseFile) { alert('Belum ada gambar untuk di-crop.'); return; }
-            const c = getSignatureCropValues(type);
-            if (c.left + c.right >= 80 || c.top + c.bottom >= 80) {
-                alert('Area crop terlalu kecil. Kurangi nilai slider.');
-                return;
-            }
+            if (!baseFile) { alert('Belum ada gambar untuk diproses.'); return; }
+            const { stage, img } = signatureEditorElements(type);
+            const state = signatureEditorState[type];
+            if (!stage || !img || !img.naturalWidth) { alert('Preview gambar belum siap.'); return; }
 
-            const url = URL.createObjectURL(baseFile);
+            // Transform posisi/skala gambar ke koordinat sumber PNG, lalu crop
+            // menggunakan kotak yang dapat digeser dan diubah ukurannya.
+            const stageRect = stage.getBoundingClientRect();
+            const baseW = Number(img.dataset.baseWidth);
+            const baseH = Number(img.dataset.baseHeight);
+            const renderedW = baseW * state.scale;
+            const renderedH = baseH * state.scale;
+            const imageLeft = (stageRect.width - renderedW) / 2 + state.x;
+            const imageTop = (stageRect.height - renderedH) / 2 + state.y;
+            const cropLeft = state.crop.x * stageRect.width;
+            const cropTop = state.crop.y * stageRect.height;
+            const cropRight = (state.crop.x + state.crop.w) * stageRect.width;
+            const cropBottom = (state.crop.y + state.crop.h) * stageRect.height;
+
+            const sx = Math.max(0, Math.floor((cropLeft - imageLeft) / renderedW * img.naturalWidth));
+            const sy = Math.max(0, Math.floor((cropTop - imageTop) / renderedH * img.naturalHeight));
+            const ex = Math.min(img.naturalWidth, Math.ceil((cropRight - imageLeft) / renderedW * img.naturalWidth));
+            const ey = Math.min(img.naturalHeight, Math.ceil((cropBottom - imageTop) / renderedH * img.naturalHeight));
+            const sw = ex - sx, sh = ey - sy;
+            if (sw < 2 || sh < 2) { alert('Kotak crop tidak mengenai gambar. Geser atau perbesar kotak crop.'); return; }
+
             try {
-                const image = new Image();
-                await new Promise((resolve, reject) => {
-                    image.onload = resolve;
-                    image.onerror = reject;
-                    image.src = url;
-                });
-                const sx = Math.round(image.naturalWidth * c.left / 100);
-                const sy = Math.round(image.naturalHeight * c.top / 100);
-                const sw = Math.max(1, Math.round(image.naturalWidth * (100 - c.left - c.right) / 100));
-                const sh = Math.max(1, Math.round(image.naturalHeight * (100 - c.top - c.bottom) / 100));
                 const canvas = document.createElement('canvas');
                 canvas.width = sw;
                 canvas.height = sh;
-                const ctx = canvas.getContext('2d');
-                const scale = getSignatureScale(type);
-                const drawW = sw * scale;
-                const drawH = sh * scale;
-                const drawX = (sw - drawW) / 2;
-                const drawY = (sh - drawH) / 2;
-                ctx.clearRect(0, 0, sw, sh);
-                ctx.imageSmoothingEnabled = true;
-                ctx.imageSmoothingQuality = 'high';
-                ctx.drawImage(image, sx, sy, sw, sh, drawX, drawY, drawW, drawH);
+                canvas.getContext('2d').drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh);
                 const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
-                if (!blob) throw new Error('Gagal membuat hasil crop.');
-                signaturePendingPng[type] = new File([blob], `${type}-crop.png`, { type: 'image/png' });
-                signatureCropBase[type] = signaturePendingPng[type];
-
-                const img = document.getElementById(`signature-review-image-${type}`);
-                if (img.dataset.objectUrl) URL.revokeObjectURL(img.dataset.objectUrl);
+                if (!blob) throw new Error('Gagal membuat PNG hasil crop.');
+                const result = new File([blob], `${type}-crop.png`, { type: 'image/png' });
+                signaturePendingPng[type] = result;
+                signatureCropBase[type] = result;
                 const nextUrl = URL.createObjectURL(blob);
+                if (img.dataset.objectUrl) URL.revokeObjectURL(img.dataset.objectUrl);
                 img.src = nextUrl;
                 img.dataset.objectUrl = nextUrl;
-                img.style.clipPath = 'none';
-                img.style.transform = 'none';
-                const scaleSlider = document.getElementById(`scale-${type}`);
-                if (scaleSlider) scaleSlider.value = 100;
-                const scaleValue = document.getElementById(`scale-${type}-value`);
-                if (scaleValue) scaleValue.textContent = '100%';
-                ['left', 'right', 'top', 'bottom'].forEach(side => {
-                    const slider = document.getElementById(`crop-${type}-${side}`);
-                    if (slider) slider.value = 0;
-                });
-                showToast('Crop diterapkan. Periksa hasil lalu klik Gunakan hasil ini.');
+                img.onload = () => initializeSignatureEditor(type);
+                showToast('Posisi dan crop diterapkan. Klik Gunakan hasil ini, lalu Simpan.');
             } catch (error) {
-                alert('Crop gagal: ' + (error.message || error));
-            } finally {
-                URL.revokeObjectURL(url);
+                alert('Gagal menerapkan crop: ' + (error.message || error));
             }
         }
+
+        ['paraf', 'ttd'].forEach(installSignatureEditor);
 
         function acceptSignatureReview(type) {
             const file = signaturePendingPng[type];
@@ -3375,8 +3477,9 @@ let isAIChatOpen = false;
                             const previewUrl = URL.createObjectURL(file);
                             img.src = previewUrl;
                             img.dataset.objectUrl = previewUrl;
-                            img.style.clipPath = 'none';
-                            review.classList.add('hidden');
+                            review.classList.remove('hidden');
+                            installSignatureEditor(type);
+                            initializeSignatureEditor(type);
                             showToast('PNG transparan terdeteksi. File asli tidak diubah; klik Simpan untuk mengunggah.');
                             return;
                         }
