@@ -228,7 +228,9 @@
         }
 
         #pdf-scroll-view {
-          position: absolute !important; inset: 0 !important; overflow-y: auto !important; overflow-x: auto !important; padding: 4px 4px 0px 4px !important; -webkit-overflow-scrolling: touch !important;
+          position: absolute !important; inset: 0 !important; overflow-y: auto !important; overflow-x: auto !important;
+          padding: 4px 4px 0px 4px !important; -webkit-overflow-scrolling: touch !important;
+          touch-action: pan-x pan-y !important; overscroll-behavior: contain;
         }
 
         #pdf-pages-stack-container { width: 100% !important; display: flex !important; flex-direction: column !important; align-items: center !important; }
@@ -4374,26 +4376,35 @@ async function compressAvatarImage(file) {
         }
 
 
-        // Zoom hanya untuk PDF di modal Review; tidak memengaruhi PDF utilitas.
+        // Zoom khusus PDF pada modal Review (bukan Utilitas PDF).
+        // CSS zoom memperbesar halaman dan seluruh layer stempel secara bersamaan.
         let reviewZoom = 1;
         let reviewPinchStartDistance = 0;
         let reviewPinchStartZoom = 1;
+        let reviewPinchStartScrollLeft = 0;
+        let reviewPinchStartScrollTop = 0;
+        let reviewPinchAnchorX = 0;
+        let reviewPinchAnchorY = 0;
         let reviewPinchActive = false;
 
         function applyReviewZoom() {
             const stack = document.getElementById('pdf-pages-stack-container');
+            const scroll = document.getElementById('pdf-scroll-view');
             const label = document.getElementById('review-zoom-label');
             if (!stack) return;
-            // Skala seluruh halaman beserta layer paraf/TTD.
-            // Lebar tetap 100% agar zoom benar-benar memperbesar PDF,
-            // bukan mengecilkan kembali halaman agar selalu muat.
+
+            // Jangan ubah lebar panel atau skala toolbar; hanya area PDF yang diperbesar.
             stack.style.zoom = String(reviewZoom);
             stack.style.width = '100%';
+            if (scroll) {
+                scroll.style.overflowX = reviewZoom > 1 ? 'auto' : 'hidden';
+                scroll.style.overflowY = 'auto';
+            }
             if (label) label.textContent = `${Math.round(reviewZoom * 100)}%`;
         }
 
         function changeReviewZoom(delta) {
-            reviewZoom = Math.max(0.6, Math.min(2.5,
+            reviewZoom = Math.max(0.6, Math.min(3,
                 Math.round((reviewZoom + delta) * 100) / 100));
             applyReviewZoom();
         }
@@ -4401,35 +4412,71 @@ async function compressAvatarImage(file) {
         function resetReviewZoom() {
             reviewZoom = 1;
             applyReviewZoom();
+            const scroll = document.getElementById('pdf-scroll-view');
+            if (scroll) {
+                scroll.scrollLeft = 0;
+                scroll.scrollTop = 0;
+            }
         }
 
         function installReviewPinchZoom() {
             const scroll = document.getElementById('pdf-scroll-view');
             if (!scroll || scroll.dataset.reviewPinchReady === '1') return;
             scroll.dataset.reviewPinchReady = '1';
+
+            // Dua jari = zoom; satu jari tetap memakai scroll normal untuk membaca PDF.
+            scroll.style.touchAction = 'pan-x pan-y';
             const distance = (a, b) => Math.hypot(
                 a.clientX - b.clientX, a.clientY - b.clientY
             );
+            const midpoint = (a, b) => ({
+                x: (a.clientX + b.clientX) / 2,
+                y: (a.clientY + b.clientY) / 2
+            });
+
             scroll.addEventListener('touchstart', (event) => {
                 if (event.touches.length === 2) {
+                    const mid = midpoint(event.touches[0], event.touches[1]);
+                    const rect = scroll.getBoundingClientRect();
                     reviewPinchActive = true;
                     reviewPinchStartDistance = distance(event.touches[0], event.touches[1]);
                     reviewPinchStartZoom = reviewZoom;
+                    reviewPinchStartScrollLeft = scroll.scrollLeft;
+                    reviewPinchStartScrollTop = scroll.scrollTop;
+                    reviewPinchAnchorX = mid.x - rect.left;
+                    reviewPinchAnchorY = mid.y - rect.top;
                 }
             }, { passive: true });
+
             scroll.addEventListener('touchmove', (event) => {
-                if (!reviewPinchActive || event.touches.length !== 2) return;
+                if (!reviewPinchActive || event.touches.length !== 2 ||
+                    reviewPinchStartDistance <= 0) return;
+
+                event.preventDefault();
                 const currentDistance = distance(event.touches[0], event.touches[1]);
-                if (reviewPinchStartDistance > 0) {
-                    reviewZoom = Math.max(0.6, Math.min(2.5,
-                        reviewPinchStartZoom * currentDistance / reviewPinchStartDistance));
-                    applyReviewZoom();
-                    event.preventDefault();
-                }
+                const currentMid = midpoint(event.touches[0], event.touches[1]);
+                const rect = scroll.getBoundingClientRect();
+                const nextZoom = Math.max(0.6, Math.min(3,
+                    reviewPinchStartZoom * currentDistance / reviewPinchStartDistance));
+                const ratio = nextZoom / reviewZoom;
+
+                reviewZoom = nextZoom;
+                applyReviewZoom();
+
+                // Pertahankan titik PDF di bawah jari agar zoom terasa alami seperti pembaca PDF.
+                const currentAnchorX = currentMid.x - rect.left;
+                const currentAnchorY = currentMid.y - rect.top;
+                scroll.scrollLeft = (reviewPinchStartScrollLeft + reviewPinchAnchorX) *
+                    (reviewZoom / reviewPinchStartZoom) - currentAnchorX;
+                scroll.scrollTop = (reviewPinchStartScrollTop + reviewPinchAnchorY) *
+                    (reviewZoom / reviewPinchStartZoom) - currentAnchorY;
             }, { passive: false });
-            const endPinch = () => {
-                reviewPinchActive = false;
-                reviewPinchStartDistance = 0;
+
+            const endPinch = (event) => {
+                if (event.touches && event.touches.length < 2) {
+                    reviewPinchActive = false;
+                    reviewPinchStartDistance = 0;
+                }
             };
             scroll.addEventListener('touchend', endPinch, { passive: true });
             scroll.addEventListener('touchcancel', endPinch, { passive: true });
