@@ -1343,6 +1343,7 @@
 
         async function createNotification(targetUsername, title, message, docId = null) {
           try {
+            // Notifikasi dalam aplikasi tetap disimpan seperti sebelumnya.
             await db.collection('notifications').add({
               username: targetUsername,
               title: title,
@@ -1351,6 +1352,32 @@
               read: false,
               waktu: firebase.firestore.FieldValue.serverTimestamp()
             });
+
+            // Push dikirim terpisah; kegagalan push tidak membatalkan notifikasi Firestore.
+            try {
+              if (auth && auth.currentUser) {
+                const idToken = await auth.currentUser.getIdToken();
+                const pushResponse = await fetch('https://kdp-doku-push.kdpnbk.workers.dev/send', {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': 'Bearer ' + idToken
+                  },
+                  body: JSON.stringify({
+                    targetUsername: String(targetUsername),
+                    title: String(title || 'KDP DOKU SIGN').slice(0, 120),
+                    body: String(message || 'Ada pemberitahuan dokumen baru.').slice(0, 500),
+                    docId: docId == null ? '' : String(docId)
+                  })
+                });
+                const pushResult = await pushResponse.json().catch(() => ({}));
+                if (!pushResponse.ok || pushResult.status !== 'ok') {
+                  console.warn('Push notification belum terkirim:', pushResult.message || pushResponse.status);
+                }
+              }
+            } catch (pushError) {
+              console.warn('Notifikasi aplikasi tersimpan, tetapi push gagal:', pushError);
+            }
           } catch (err) {
             console.error("Gagal membuat notifikasi:", err);
           }
