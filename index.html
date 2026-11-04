@@ -954,8 +954,17 @@
                                                 <label class="text-[10px] text-sub">Atas <input id="crop-paraf-top" type="range" min="0" max="35" value="0" step="1" class="w-full" oninput="updateSignatureCropPreview('paraf')"></label>
                                                 <label class="text-[10px] text-sub">Bawah <input id="crop-paraf-bottom" type="range" min="0" max="35" value="0" step="1" class="w-full" oninput="updateSignatureCropPreview('paraf')"></label>
                                             </div>
+                                            <div class="pt-2 border-t border-panel space-y-1">
+                                                <div class="flex items-center justify-between">
+                                                    <label for="scale-paraf" class="text-xs font-semibold text-heading">Skala ukuran aset</label>
+                                                    <span id="scale-paraf-value" class="text-xs font-bold text-premium-gold">100%</span>
+                                                </div>
+                                                <input id="scale-paraf" type="range" min="25" max="250" value="100" step="5"
+                                                    class="w-full" oninput="updateSignatureCropPreview('paraf')">
+                                                <div class="flex justify-between text-[10px] text-sub"><span>25% · Kecil</span><span>250% · Besar</span></div>
+                                            </div>
                                             <div class="flex justify-end">
-                                                <button type="button" onclick="applySignatureCrop('paraf')" class="px-3 py-1.5 rounded bg-premium-gold text-regal-black text-xs font-bold">Terapkan Crop</button>
+                                                <button type="button" onclick="applySignatureCrop('paraf')" class="px-3 py-1.5 rounded bg-premium-gold text-regal-black text-xs font-bold">Terapkan Crop & Skala</button>
                                             </div>
                                         </div>
                                         <div class="flex flex-wrap justify-end gap-2">
@@ -1005,8 +1014,17 @@
                                                 <label class="text-[10px] text-sub">Atas <input id="crop-ttd-top" type="range" min="0" max="35" value="0" step="1" class="w-full" oninput="updateSignatureCropPreview('ttd')"></label>
                                                 <label class="text-[10px] text-sub">Bawah <input id="crop-ttd-bottom" type="range" min="0" max="35" value="0" step="1" class="w-full" oninput="updateSignatureCropPreview('ttd')"></label>
                                             </div>
+                                            <div class="pt-2 border-t border-panel space-y-1">
+                                                <div class="flex items-center justify-between">
+                                                    <label for="scale-ttd" class="text-xs font-semibold text-heading">Skala ukuran aset</label>
+                                                    <span id="scale-ttd-value" class="text-xs font-bold text-premium-gold">100%</span>
+                                                </div>
+                                                <input id="scale-ttd" type="range" min="25" max="250" value="100" step="5"
+                                                    class="w-full" oninput="updateSignatureCropPreview('ttd')">
+                                                <div class="flex justify-between text-[10px] text-sub"><span>25% · Kecil</span><span>250% · Besar</span></div>
+                                            </div>
                                             <div class="flex justify-end">
-                                                <button type="button" onclick="applySignatureCrop('ttd')" class="px-3 py-1.5 rounded bg-premium-gold text-regal-black text-xs font-bold">Terapkan Crop</button>
+                                                <button type="button" onclick="applySignatureCrop('ttd')" class="px-3 py-1.5 rounded bg-premium-gold text-regal-black text-xs font-bold">Terapkan Crop & Skala</button>
                                             </div>
                                         </div>
                                         <div class="flex flex-wrap justify-end gap-2">
@@ -3199,6 +3217,10 @@ let isAIChatOpen = false;
                     [blob], `${type}-transparan.png`, { type: 'image/png' }
                 );
                 signatureCropBase[type] = signaturePendingPng[type];
+                const scaleSlider = document.getElementById(`scale-${type}`);
+                if (scaleSlider) scaleSlider.value = 100;
+                const scaleValue = document.getElementById(`scale-${type}-value`);
+                if (scaleValue) scaleValue.textContent = '100%';
                 ['left', 'right', 'top', 'bottom'].forEach(side => {
                     const slider = document.getElementById(`crop-${type}-${side}`);
                     if (slider) slider.value = 0;
@@ -3221,6 +3243,11 @@ let isAIChatOpen = false;
             return { left: value('left'), right: value('right'), top: value('top'), bottom: value('bottom') };
         }
 
+        function getSignatureScale(type) {
+            const slider = document.getElementById(`scale-${type}`);
+            return Math.max(25, Math.min(250, Number(slider?.value || 100))) / 100;
+        }
+
         function updateSignatureCropPreview(type) {
             const img = document.getElementById(`signature-review-image-${type}`);
             if (!img) return;
@@ -3229,7 +3256,11 @@ let isAIChatOpen = false;
             const right = Math.min(70, c.right);
             const bottom = Math.min(70, c.bottom);
             const left = Math.min(70, c.left);
+            const scale = getSignatureScale(type);
             img.style.clipPath = `inset(${top}% ${right}% ${bottom}% ${left}%)`;
+            img.style.transform = `scale(${scale})`;
+            const value = document.getElementById(`scale-${type}-value`);
+            if (value) value.textContent = `${Math.round(scale * 100)}%`;
         }
 
         async function applySignatureCrop(type) {
@@ -3256,7 +3287,16 @@ let isAIChatOpen = false;
                 const canvas = document.createElement('canvas');
                 canvas.width = sw;
                 canvas.height = sh;
-                canvas.getContext('2d').drawImage(image, sx, sy, sw, sh, 0, 0, sw, sh);
+                const ctx = canvas.getContext('2d');
+                const scale = getSignatureScale(type);
+                const drawW = sw * scale;
+                const drawH = sh * scale;
+                const drawX = (sw - drawW) / 2;
+                const drawY = (sh - drawH) / 2;
+                ctx.clearRect(0, 0, sw, sh);
+                ctx.imageSmoothingEnabled = true;
+                ctx.imageSmoothingQuality = 'high';
+                ctx.drawImage(image, sx, sy, sw, sh, drawX, drawY, drawW, drawH);
                 const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
                 if (!blob) throw new Error('Gagal membuat hasil crop.');
                 signaturePendingPng[type] = new File([blob], `${type}-crop.png`, { type: 'image/png' });
@@ -3268,6 +3308,11 @@ let isAIChatOpen = false;
                 img.src = nextUrl;
                 img.dataset.objectUrl = nextUrl;
                 img.style.clipPath = 'none';
+                img.style.transform = 'none';
+                const scaleSlider = document.getElementById(`scale-${type}`);
+                if (scaleSlider) scaleSlider.value = 100;
+                const scaleValue = document.getElementById(`scale-${type}-value`);
+                if (scaleValue) scaleValue.textContent = '100%';
                 ['left', 'right', 'top', 'bottom'].forEach(side => {
                     const slider = document.getElementById(`crop-${type}-${side}`);
                     if (slider) slider.value = 0;
