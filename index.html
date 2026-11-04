@@ -4265,11 +4265,12 @@ async function compressAvatarImage(file) {
                         wrapper.id = `pdf-page-wrapper-${pageNum}`;
                         wrapper.dataset.pageNumber = String(pageNum);
                         wrapper.dataset.renderState = 'waiting';
+                        wrapper.dataset.baseWidth = String(Math.floor(firstCssViewport.width));
+                        wrapper.dataset.baseHeight = String(Math.floor(firstCssViewport.height));
                         wrapper.style.width = `${Math.floor(firstCssViewport.width)}px`;
                         wrapper.style.height = `${Math.floor(firstCssViewport.height)}px`;
                         wrapper.style.maxWidth = 'none';
                         wrapper.style.flex = '0 0 auto';
-                        wrapper.style.zoom = String(reviewZoom);
                         wrapper.style.overflow = 'hidden';
 
                         const placeholder = document.createElement('div');
@@ -4304,8 +4305,10 @@ async function compressAvatarImage(file) {
                             const pixelRatio = Math.min(1.5, Math.max(1, window.devicePixelRatio || 1));
                             const renderViewport = page.getViewport({ scale: pageCssScale * pixelRatio });
 
-                            wrapper.style.width = `${Math.floor(cssViewport.width)}px`;
-                            wrapper.style.height = `${Math.floor(cssViewport.height)}px`;
+                            wrapper.dataset.baseWidth = String(Math.floor(cssViewport.width));
+                            wrapper.dataset.baseHeight = String(Math.floor(cssViewport.height));
+                            wrapper.style.width = `${Math.floor(cssViewport.width * reviewZoom)}px`;
+                            wrapper.style.height = `${Math.floor(cssViewport.height * reviewZoom)}px`;
                             const oldPlaceholder = wrapper.querySelector('.pdf-page-loading-placeholder');
                             if (oldPlaceholder) oldPlaceholder.remove();
 
@@ -4342,6 +4345,7 @@ async function compressAvatarImage(file) {
                     if (status) status.remove();
                     await renderPdfPage(1);
                     if (previewSession !== pdfPreviewSession) return;
+                    applyReviewZoom();
 
                     // Halaman lain baru dirender saat mendekati area yang terlihat.
                     if ('IntersectionObserver' in window) {
@@ -4395,19 +4399,28 @@ async function compressAvatarImage(file) {
             const label = document.getElementById('review-zoom-label');
             if (!stack) return;
 
-            // Terapkan zoom ke setiap halaman secara terpisah, bukan ke stack.
-            // Dengan demikian rasio lebar/tinggi PDF tidak berubah dan halaman
-            // tidak mengalami reflow atau peregangan saat diperbesar.
+            // Besarkan dimensi layout setiap halaman secara proporsional.
+            // Tidak memakai CSS zoom/transform pada stack sehingga rasio PDF
+            // dan koordinat layer paraf/TTD tetap sama.
             stack.style.zoom = '1';
-            stack.style.width = '100%';
-            stack.querySelectorAll('.pdf-page-canvas-wrapper').forEach(page => {
-                page.style.zoom = String(reviewZoom);
+            stack.style.width = 'max-content';
+            const pages = stack.querySelectorAll('.pdf-page-canvas-wrapper');
+            pages.forEach(page => {
+                const baseWidth = Number(page.dataset.baseWidth || page.dataset.originalWidth || page.style.width.replace('px',''));
+                const baseHeight = Number(page.dataset.baseHeight || page.dataset.originalHeight || page.style.height.replace('px',''));
+                if (!baseWidth || !baseHeight) return;
+                page.dataset.baseWidth = String(baseWidth);
+                page.dataset.baseHeight = String(baseHeight);
+                page.style.width = `${Math.round(baseWidth * reviewZoom)}px`;
+                page.style.height = `${Math.round(baseHeight * reviewZoom)}px`;
                 page.style.maxWidth = 'none';
                 page.style.flex = '0 0 auto';
+                page.style.zoom = '1';
             });
             if (scroll) {
                 scroll.style.overflowX = reviewZoom > 1 ? 'auto' : 'hidden';
                 scroll.style.overflowY = 'auto';
+                stack.style.alignItems = reviewZoom > 1 ? 'flex-start' : 'center';
             }
             if (label) label.textContent = `${Math.round(reviewZoom * 100)}%`;
         }
