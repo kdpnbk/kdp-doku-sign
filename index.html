@@ -923,7 +923,7 @@
                             <div class="bg-input/40 p-3.5 rounded-xl border border-panel space-y-3">
                                 <div class="flex items-center justify-between">
                                     <div class="flex items-center gap-3">
-                                        <div class="w-24 h-14 bg-panel border border-panel rounded flex items-center justify-center overflow-hidden shrink-0 p-1" id="profile-paraf-preview-box">
+                                        <div class="w-32 h-20 bg-panel border border-panel rounded flex items-center justify-center overflow-hidden shrink-0 p-1" id="profile-paraf-preview-box">
                                             <span class="text-[9px] text-sub italic">Kosong</span>
                                         </div>
                                         <div>
@@ -961,7 +961,7 @@
                             <div class="bg-input/40 p-3.5 rounded-xl border border-panel space-y-3">
                                 <div class="flex items-center justify-between">
                                     <div class="flex items-center gap-3">
-                                        <div class="w-24 h-14 bg-panel border border-panel rounded flex items-center justify-center overflow-hidden shrink-0 p-1" id="profile-ttd-preview-box">
+                                        <div class="w-32 h-20 bg-panel border border-panel rounded flex items-center justify-center overflow-hidden shrink-0 p-1" id="profile-ttd-preview-box">
                                             <span class="text-[9px] text-sub italic">Kosong</span>
                                         </div>
                                         <div>
@@ -3139,17 +3139,17 @@ let isAIChatOpen = false;
             const cropW = Math.min(width - cropX, inkW + padX * 2);
             const cropH = Math.min(height - cropY, inkH + padY * 2);
 
-            // Kanvas transparan beresolusi tinggi. Goresan dipusatkan secara
-            // matematis dan diperbesar sampai memenuhi area aman tanpa distorsi.
+            // Kanvas PNG memakai rasio landscape yang konsisten untuk paraf dan TTD.
+            // Sebelumnya kanvas mengikuti rasio potongan sumber; bila paraf tinggi/
+            // sempit, object-fit contain membuatnya tampak sangat kecil di preview.
+            // Kini goresan dipusatkan dan diperbesar untuk mengisi frame tanpa distorsi.
             const output = document.createElement('canvas');
-            const outputMax = 1200;
-            const sourceRatio = cropW / cropH;
-            output.width = sourceRatio >= 1 ? outputMax : Math.max(1, Math.round(outputMax * sourceRatio));
-            output.height = sourceRatio >= 1 ? Math.max(1, Math.round(outputMax / sourceRatio)) : outputMax;
+            output.width = 1200;
+            output.height = 600;
 
             const outCtx = output.getContext('2d');
-            const safeW = output.width * 0.88;
-            const safeH = output.height * 0.82;
+            const safeW = output.width * 0.90;
+            const safeH = output.height * 0.84;
             const fitScale = Math.min(safeW / cropW, safeH / cropH);
             const drawW = cropW * fitScale;
             const drawH = cropH * fitScale;
