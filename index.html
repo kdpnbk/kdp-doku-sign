@@ -5489,7 +5489,7 @@ async function compressAvatarImage(file) {
                             }
 
                             targetPage.drawImage(embedded, { 
-                                x: pdfX + (pdfW * 0.10), 
+                                x: pdfX + (pdfW - drawW) / 2, 
                                 y: pdfY + (pdfH - drawH) / 2, 
                                 width: drawW, 
                                 height: drawH 
@@ -5506,7 +5506,7 @@ async function compressAvatarImage(file) {
 
                     const font = await pdfDoc.embedFont(PDFLib.StandardFonts.HelveticaBold);
                     targetPage.drawText(dateStr, {
-                        x: pdfX + (pdfW * 0.42),
+                        x: pdfX + (pdfW * 0.68),
                         y: pdfY + (pdfH / 2) - 4,
                         size: 9 * scaleX,
                         font: font,
