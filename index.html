@@ -4258,7 +4258,14 @@ async function compressAvatarImage(file) {
                     const firstPage = await loadedPdfDocument.getPage(1);
                     if (previewSession !== pdfPreviewSession) return;
 
-                    const containerWidth = Math.max(280, (stackContainer.clientWidth || (window.innerWidth - 10)) - 12);
+                    // Ukur lebar viewport PDF yang terlihat, bukan lebar stack yang
+                    // dapat menyusut mengikuti isi halaman. Ini membuat halaman awal
+                    // otomatis memenuhi lebar area baca (fit-to-width), termasuk di PC.
+                    const availablePdfWidth = scrollView.clientWidth || (window.innerWidth - 360);
+                    const containerWidth = Math.max(
+                        280,
+                        Math.floor(availablePdfWidth - 32)
+                    );
                     const firstViewport = firstPage.getViewport({ scale: 1 });
                     const cssScale = containerWidth / firstViewport.width;
                     const firstCssViewport = firstPage.getViewport({ scale: cssScale });
