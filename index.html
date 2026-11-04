@@ -266,7 +266,14 @@
         #mobile-bottom-action-panel { display: none !important; }
       }
     </style>
-    <style id="review-desktop-controls-fix">
+    <style id="review-pdf-mouse-pan-style">
+      #pdf-scroll-view { cursor: default; }
+      #pdf-scroll-view.review-pdf-panning { cursor: grabbing !important; user-select: none !important; }
+      @media (min-width: 768px) {
+        #pdf-scroll-view:has(#pdf-pages-stack-container) { scrollbar-gutter: stable; }
+      }
+    </style>
+        <style id="review-desktop-controls-fix">
       @media (min-width: 768px) {
         #desktop-pdf-zoom-controls {
           display: flex !important;
@@ -4504,6 +4511,82 @@ async function compressAvatarImage(file) {
             scroll.addEventListener('touchcancel', endPinch, { passive: true });
         }
         installReviewPinchZoom();
+
+        // PC: klik-tahan lalu geser halaman PDF ketika zoom di atas 100%.
+        // Jika mode penempatan paraf/TTD aktif, mouse tetap dipakai untuk menempelkan stempel.
+        function installReviewMousePan() {
+            const scroll = document.getElementById('pdf-scroll-view');
+            if (!scroll || scroll.dataset.reviewMousePanReady === '1') return;
+            scroll.dataset.reviewMousePanReady = '1';
+
+            scroll.addEventListener('click', (event) => {
+                if (scroll.dataset.reviewPanJustEnded === '1') {
+                    event.preventDefault();
+                    event.stopImmediatePropagation();
+                }
+            }, true);
+
+            let dragging = false;
+            let startX = 0;
+            let startY = 0;
+            let startLeft = 0;
+            let startTop = 0;
+            let moved = false;
+
+            const isStampPlacementActive = () => {
+                return !!(
+                    document.body.classList.contains('stamp-placement-active') ||
+                    document.body.classList.contains('placing-stamp') ||
+                    window.isCursorStampActive ||
+                    window.cursorStampActive ||
+                    window.activeCursorStamp
+                );
+            };
+
+            scroll.addEventListener('mousedown', (event) => {
+                if (event.button !== 0 || reviewZoom <= 1.001 || isStampPlacementActive()) return;
+                if (event.target.closest('button, input, textarea, select, a, [role="button"]')) return;
+
+                dragging = true;
+                moved = false;
+                startX = event.clientX;
+                startY = event.clientY;
+                startLeft = scroll.scrollLeft;
+                startTop = scroll.scrollTop;
+                scroll.classList.add('review-pdf-panning');
+                event.preventDefault();
+            });
+
+            window.addEventListener('mousemove', (event) => {
+                if (!dragging) return;
+                const dx = event.clientX - startX;
+                const dy = event.clientY - startY;
+                if (Math.abs(dx) + Math.abs(dy) > 3) moved = true;
+                scroll.scrollLeft = startLeft - dx;
+                scroll.scrollTop = startTop - dy;
+            });
+
+            window.addEventListener('mouseup', () => {
+                if (!dragging) return;
+                dragging = false;
+                scroll.classList.remove('review-pdf-panning');
+                if (moved) {
+                    // Cegah klik canvas setelah gerakan drag, tanpa memengaruhi klik biasa.
+                    scroll.dataset.reviewPanJustEnded = '1';
+                    setTimeout(() => { delete scroll.dataset.reviewPanJustEnded; }, 0);
+                }
+            });
+
+            // Trackpad / mouse wheel: Shift+wheel menggeser horizontal; wheel biasa vertikal.
+            scroll.addEventListener('wheel', (event) => {
+                if (reviewZoom <= 1.001) return;
+                if (event.shiftKey && Math.abs(event.deltaY) > 0) {
+                    scroll.scrollLeft += event.deltaY;
+                    event.preventDefault();
+                }
+            }, { passive: false });
+        }
+        installReviewMousePan();
 
         function handlePdfScrollSync(scrollView) {
             const wrappers = scrollView.querySelectorAll('.pdf-page-canvas-wrapper');
