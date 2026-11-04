@@ -964,6 +964,14 @@
                 <!-- PENGATURAN -->
                 <div id="section-pengaturan" class="hidden space-y-4">
                     <div class="bg-panel p-5 rounded-2xl shadow-lg border border-panel max-w-md">
+                        <h3 class="text-xs font-bold text-heading mb-2">Notifikasi Perangkat</h3>
+                        <p class="text-[11px] text-sub mb-3">Aktifkan notifikasi pada perangkat ini agar pemberitahuan dokumen dapat diterima melalui browser.</p>
+                        <div class="flex items-center gap-3 flex-wrap">
+                            <button type="button" id="btn-enable-push" onclick="enablePushNotifications()" class="px-4 py-2 rounded-xl bg-premium-gold text-regal-black text-xs font-bold">Aktifkan Notifikasi</button>
+                            <span id="push-notification-status" class="text-[11px] text-sub" role="status" aria-live="polite">Belum diaktifkan pada perangkat ini.</span>
+                        </div>
+                    </div>
+                    <div class="bg-panel p-5 rounded-2xl shadow-lg border border-panel max-w-md">
                         <h3 class="text-xs font-bold text-heading mb-3">Tema</h3>
                         <div class="grid grid-cols-2 gap-3">
                             <button onclick="setThemeMode('dark')" class="py-2 rounded-xl border border-premium-gold text-xs font-bold bg-panel text-premium-gold">Mode Gelap</button>
@@ -1221,6 +1229,73 @@
         window.__KDP_FIREBASE_INIT_ERROR__ = firebaseInitError;
         console.error('Inisialisasi Firebase gagal:', firebaseInitError);
       }
+    </script>
+    <script>
+      // Firebase Cloud Messaging: aktivasi notifikasi untuk perangkat yang sedang digunakan.
+      // Token ditahan sementara di localStorage sampai backend Cloudflare Worker diamankan.
+      const KDP_FCM_VAPID_KEY = "BMcOpRNcrF9AvUfRWnq-7qORsMtZ1woyIB2HfqgZ8PDxPz80bj-P5NcRBbaMHNTI3OrNdkeS7VJjhIhugnC4JVE";
+
+      window.enablePushNotifications = async function () {
+        const button = document.getElementById('btn-enable-push');
+        const status = document.getElementById('push-notification-status');
+        const setStatus = (message) => { if (status) status.textContent = message; };
+
+        try {
+          if (button) button.disabled = true;
+          setStatus('Memeriksa akun dan dukungan browser...');
+
+          if (!auth || !auth.currentUser || !db) {
+            throw new Error('Silakan login terlebih dahulu sebelum mengaktifkan notifikasi.');
+          }
+          if (!currentUser || !currentUser.username) {
+            throw new Error('Profil pengguna belum siap. Muat ulang aplikasi lalu coba kembali.');
+          }
+          if (!('serviceWorker' in navigator) || !('Notification' in window)) {
+            throw new Error('Browser ini belum mendukung notifikasi push.');
+          }
+          if (!window.firebase || !firebase.messaging || !(await firebase.messaging.isSupported())) {
+            throw new Error('Firebase Messaging tidak didukung pada browser/perangkat ini.');
+          }
+
+          const accountRef = db.collection('users').doc(currentUser.username);
+          const accountSnap = await accountRef.get();
+          if (!accountSnap.exists || accountSnap.data().uid !== auth.currentUser.uid) {
+            throw new Error('UID akun tidak cocok. Token perangkat tidak disimpan demi keamanan.');
+          }
+
+          let permission = Notification.permission;
+          if (permission === 'default') permission = await Notification.requestPermission();
+          if (permission !== 'granted') {
+            throw new Error('Izin notifikasi belum diberikan. Izinkan notifikasi untuk KDP DOKU SIGN pada pengaturan browser.');
+          }
+
+          const registration = await navigator.serviceWorker.register('/sw.js');
+          await navigator.serviceWorker.ready;
+
+          const messaging = firebase.messaging();
+          const token = await messaging.getToken({
+            vapidKey: KDP_FCM_VAPID_KEY,
+            serviceWorkerRegistration: registration
+          });
+
+          if (!token) {
+            throw new Error('Firebase belum memberikan token perangkat. Silakan coba kembali.');
+          }
+
+          // Jangan menulis token ke Firestore dari browser sebelum endpoint server
+          // dan aturan otorisasi penerima notifikasi selesai dipasang.
+          localStorage.setItem('kdp_fcm_pending_token', token);
+          localStorage.setItem('kdp_fcm_pending_uid', auth.currentUser.uid);
+
+          setStatus('Izin notifikasi aktif dan token perangkat berhasil dibuat. Pendaftaran server menunggu penyelesaian backend.');
+          if (button) button.textContent = 'Izin Notifikasi Aktif';
+        } catch (error) {
+          console.error('Aktivasi notifikasi push gagal:', error);
+          setStatus(error.message || 'Gagal mengaktifkan notifikasi. Silakan coba lagi.');
+        } finally {
+          if (button) button.disabled = false;
+        }
+      };
     </script>
 <!-- Supabase JS Client SDK -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
