@@ -1282,13 +1282,31 @@
             throw new Error('Firebase belum memberikan token perangkat. Silakan coba kembali.');
           }
 
-          // Jangan menulis token ke Firestore dari browser sebelum endpoint server
-          // dan aturan otorisasi penerima notifikasi selesai dipasang.
-          localStorage.setItem('kdp_fcm_pending_token', token);
-          localStorage.setItem('kdp_fcm_pending_uid', auth.currentUser.uid);
+          setStatus('Token berhasil dibuat. Mendaftarkan perangkat ke server...');
 
-          setStatus('Izin notifikasi aktif dan token perangkat berhasil dibuat. Pendaftaran server menunggu penyelesaian backend.');
-          if (button) button.textContent = 'Izin Notifikasi Aktif';
+          const idToken = await auth.currentUser.getIdToken(true);
+          const registerResponse = await fetch('https://kdp-doku-push.kdpnbk.workers.dev/register', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer ' + idToken
+            },
+            body: JSON.stringify({
+              token: token,
+              platform: /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ? 'mobile-web' : 'desktop-web'
+            })
+          });
+
+          const registerResult = await registerResponse.json().catch(() => ({}));
+          if (!registerResponse.ok || registerResult.status !== 'ok') {
+            throw new Error(registerResult.message || 'Server gagal mendaftarkan perangkat (' + registerResponse.status + ').');
+          }
+
+          localStorage.setItem('kdp_fcm_registered_token', token);
+          localStorage.setItem('kdp_fcm_registered_uid', auth.currentUser.uid);
+
+          setStatus('Notifikasi berhasil diaktifkan dan perangkat sudah terdaftar di server.');
+          if (button) button.textContent = 'Notifikasi Aktif';
         } catch (error) {
           console.error('Aktivasi notifikasi push gagal:', error);
           setStatus(error.message || 'Gagal mengaktifkan notifikasi. Silakan coba lagi.');
