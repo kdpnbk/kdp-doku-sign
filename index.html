@@ -945,6 +945,19 @@
                                         <div class="h-56 min-h-[220px] w-full rounded-lg flex items-center justify-center overflow-hidden p-2" style="background-color:#e5e7eb;background-image:linear-gradient(45deg,#f8fafc 25%,transparent 25%),linear-gradient(-45deg,#f8fafc 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#f8fafc 75%),linear-gradient(-45deg,transparent 75%,#f8fafc 75%);background-size:16px 16px;background-position:0 0,0 8px,8px -8px,-8px 0;">
                                             <img id="signature-review-image-paraf" style="display:block;width:auto;height:auto;max-width:100%;max-height:100%;object-fit:contain;object-position:center center;transform:none;" alt="Preview Paraf transparan">
                                         </div>
+
+                                        <div class="rounded-lg border border-panel p-2 space-y-2 bg-input/40">
+                                            <div class="text-xs font-semibold text-heading">Atur crop dengan menggeser slider</div>
+                                            <div class="grid grid-cols-2 gap-x-3 gap-y-2">
+                                                <label class="text-[10px] text-sub">Kiri <input id="crop-paraf-left" type="range" min="0" max="35" value="0" step="1" class="w-full" oninput="updateSignatureCropPreview('paraf')"></label>
+                                                <label class="text-[10px] text-sub">Kanan <input id="crop-paraf-right" type="range" min="0" max="35" value="0" step="1" class="w-full" oninput="updateSignatureCropPreview('paraf')"></label>
+                                                <label class="text-[10px] text-sub">Atas <input id="crop-paraf-top" type="range" min="0" max="35" value="0" step="1" class="w-full" oninput="updateSignatureCropPreview('paraf')"></label>
+                                                <label class="text-[10px] text-sub">Bawah <input id="crop-paraf-bottom" type="range" min="0" max="35" value="0" step="1" class="w-full" oninput="updateSignatureCropPreview('paraf')"></label>
+                                            </div>
+                                            <div class="flex justify-end">
+                                                <button type="button" onclick="applySignatureCrop('paraf')" class="px-3 py-1.5 rounded bg-premium-gold text-regal-black text-xs font-bold">Terapkan Crop</button>
+                                            </div>
+                                        </div>
                                         <div class="flex flex-wrap justify-end gap-2">
                                             <button type="button" onclick="discardSignatureReview('paraf')" class="px-3 py-1.5 rounded border border-panel text-heading text-xs">Buang hasil</button>
                                             <button type="button" onclick="acceptSignatureReview('paraf')" class="px-3 py-1.5 rounded bg-premium-gold text-regal-black font-bold text-xs">Gunakan hasil ini</button>
@@ -982,6 +995,19 @@
                                         <div class="text-[10px] font-bold text-heading">Preview hasil PNG transparan</div>
                                         <div class="h-56 min-h-[220px] w-full rounded-lg flex items-center justify-center overflow-hidden p-2" style="background-color:#e5e7eb;background-image:linear-gradient(45deg,#f8fafc 25%,transparent 25%),linear-gradient(-45deg,#f8fafc 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#f8fafc 75%),linear-gradient(-45deg,transparent 75%,#f8fafc 75%);background-size:16px 16px;background-position:0 0,0 8px,8px -8px,-8px 0;">
                                             <img id="signature-review-image-ttd" style="display:block;width:auto;height:auto;max-width:100%;max-height:100%;object-fit:contain;object-position:center center;transform:none;" alt="Preview Tanda Tangan transparan">
+                                        </div>
+
+                                        <div class="rounded-lg border border-panel p-2 space-y-2 bg-input/40">
+                                            <div class="text-xs font-semibold text-heading">Atur crop dengan menggeser slider</div>
+                                            <div class="grid grid-cols-2 gap-x-3 gap-y-2">
+                                                <label class="text-[10px] text-sub">Kiri <input id="crop-ttd-left" type="range" min="0" max="35" value="0" step="1" class="w-full" oninput="updateSignatureCropPreview('ttd')"></label>
+                                                <label class="text-[10px] text-sub">Kanan <input id="crop-ttd-right" type="range" min="0" max="35" value="0" step="1" class="w-full" oninput="updateSignatureCropPreview('ttd')"></label>
+                                                <label class="text-[10px] text-sub">Atas <input id="crop-ttd-top" type="range" min="0" max="35" value="0" step="1" class="w-full" oninput="updateSignatureCropPreview('ttd')"></label>
+                                                <label class="text-[10px] text-sub">Bawah <input id="crop-ttd-bottom" type="range" min="0" max="35" value="0" step="1" class="w-full" oninput="updateSignatureCropPreview('ttd')"></label>
+                                            </div>
+                                            <div class="flex justify-end">
+                                                <button type="button" onclick="applySignatureCrop('ttd')" class="px-3 py-1.5 rounded bg-premium-gold text-regal-black text-xs font-bold">Terapkan Crop</button>
+                                            </div>
                                         </div>
                                         <div class="flex flex-wrap justify-end gap-2">
                                             <button type="button" onclick="discardSignatureReview('ttd')" class="px-3 py-1.5 rounded border border-panel text-heading text-xs">Buang hasil</button>
@@ -2945,6 +2971,9 @@ let isAIChatOpen = false;
         let signatureCameraFacing = 'environment';
         let signatureCaptureTarget = 'ttd';
         let signaturePendingPng = { paraf: null, ttd: null };
+        let signatureCropBase = { paraf: null, ttd: null };
+        const signatureCropDefaults = () => ({ left: 0, right: 0, top: 0, bottom: 0 });
+
 
         async function openSignatureCamera(type) {
             signatureCaptureTarget = type;
@@ -3169,6 +3198,11 @@ let isAIChatOpen = false;
                 signaturePendingPng[type] = new File(
                     [blob], `${type}-transparan.png`, { type: 'image/png' }
                 );
+                signatureCropBase[type] = signaturePendingPng[type];
+                ['left', 'right', 'top', 'bottom'].forEach(side => {
+                    const slider = document.getElementById(`crop-${type}-${side}`);
+                    if (slider) slider.value = 0;
+                });
 
                 const preview = document.getElementById(`signature-review-${type}`);
                 const img = document.getElementById(`signature-review-image-${type}`);
@@ -3178,6 +3212,72 @@ let isAIChatOpen = false;
                 img.dataset.objectUrl = url;
                 preview.classList.remove('hidden');
             }, 'image/png');
+        }
+
+
+        function getSignatureCropValues(type) {
+            const value = side => Math.max(0, Math.min(35,
+                Number(document.getElementById(`crop-${type}-${side}`)?.value || 0)));
+            return { left: value('left'), right: value('right'), top: value('top'), bottom: value('bottom') };
+        }
+
+        function updateSignatureCropPreview(type) {
+            const img = document.getElementById(`signature-review-image-${type}`);
+            if (!img) return;
+            const c = getSignatureCropValues(type);
+            const top = Math.min(70, c.top);
+            const right = Math.min(70, c.right);
+            const bottom = Math.min(70, c.bottom);
+            const left = Math.min(70, c.left);
+            img.style.clipPath = `inset(${top}% ${right}% ${bottom}% ${left}%)`;
+        }
+
+        async function applySignatureCrop(type) {
+            const baseFile = signatureCropBase[type] || signaturePendingPng[type];
+            if (!baseFile) { alert('Belum ada gambar untuk di-crop.'); return; }
+            const c = getSignatureCropValues(type);
+            if (c.left + c.right >= 80 || c.top + c.bottom >= 80) {
+                alert('Area crop terlalu kecil. Kurangi nilai slider.');
+                return;
+            }
+
+            const url = URL.createObjectURL(baseFile);
+            try {
+                const image = new Image();
+                await new Promise((resolve, reject) => {
+                    image.onload = resolve;
+                    image.onerror = reject;
+                    image.src = url;
+                });
+                const sx = Math.round(image.naturalWidth * c.left / 100);
+                const sy = Math.round(image.naturalHeight * c.top / 100);
+                const sw = Math.max(1, Math.round(image.naturalWidth * (100 - c.left - c.right) / 100));
+                const sh = Math.max(1, Math.round(image.naturalHeight * (100 - c.top - c.bottom) / 100));
+                const canvas = document.createElement('canvas');
+                canvas.width = sw;
+                canvas.height = sh;
+                canvas.getContext('2d').drawImage(image, sx, sy, sw, sh, 0, 0, sw, sh);
+                const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+                if (!blob) throw new Error('Gagal membuat hasil crop.');
+                signaturePendingPng[type] = new File([blob], `${type}-crop.png`, { type: 'image/png' });
+                signatureCropBase[type] = signaturePendingPng[type];
+
+                const img = document.getElementById(`signature-review-image-${type}`);
+                if (img.dataset.objectUrl) URL.revokeObjectURL(img.dataset.objectUrl);
+                const nextUrl = URL.createObjectURL(blob);
+                img.src = nextUrl;
+                img.dataset.objectUrl = nextUrl;
+                img.style.clipPath = 'none';
+                ['left', 'right', 'top', 'bottom'].forEach(side => {
+                    const slider = document.getElementById(`crop-${type}-${side}`);
+                    if (slider) slider.value = 0;
+                });
+                showToast('Crop diterapkan. Periksa hasil lalu klik Gunakan hasil ini.');
+            } catch (error) {
+                alert('Crop gagal: ' + (error.message || error));
+            } finally {
+                URL.revokeObjectURL(url);
+            }
         }
 
         function acceptSignatureReview(type) {
@@ -3193,6 +3293,7 @@ let isAIChatOpen = false;
 
         function discardSignatureReview(type) {
             signaturePendingPng[type] = null;
+            signatureCropBase[type] = null;
             const preview = document.getElementById(`signature-review-${type}`);
             const img = document.getElementById(`signature-review-image-${type}`);
             if (img.dataset.objectUrl) URL.revokeObjectURL(img.dataset.objectUrl);
@@ -3203,11 +3304,44 @@ let isAIChatOpen = false;
         function handleSignatureGalleryChange(type, file) {
             if (!file) return;
             if (!file.type.startsWith('image/')) { alert('Pilih file foto JPG, PNG, atau WebP.'); return; }
-            const image = new Image();
             const url = URL.createObjectURL(file);
+            const image = new Image();
             image.onload = () => {
-                processSignatureImage(image, type);
-                URL.revokeObjectURL(url);
+                try {
+                    // PNG yang sudah memiliki alpha/transparansi tidak diproses ulang.
+                    // File asli langsung menjadi aset yang siap diunggah saat Simpan.
+                    if (file.type === 'image/png') {
+                        const probe = document.createElement('canvas');
+                        probe.width = Math.min(96, image.naturalWidth);
+                        probe.height = Math.min(96, image.naturalHeight);
+                        const pctx = probe.getContext('2d', { willReadFrequently: true });
+                        pctx.drawImage(image, 0, 0, probe.width, probe.height);
+                        const data = pctx.getImageData(0, 0, probe.width, probe.height).data;
+                        let transparentPixels = 0;
+                        for (let i = 3; i < data.length; i += 4) {
+                            if (data[i] < 245) transparentPixels++;
+                        }
+                        if (transparentPixels > Math.max(2, probe.width * probe.height * 0.002)) {
+                            signaturePendingPng[type] = file;
+                            signatureCropBase[type] = file;
+                            const review = document.getElementById(`signature-review-${type}`);
+                            const img = document.getElementById(`signature-review-image-${type}`);
+                            if (img.dataset.objectUrl) URL.revokeObjectURL(img.dataset.objectUrl);
+                            const previewUrl = URL.createObjectURL(file);
+                            img.src = previewUrl;
+                            img.dataset.objectUrl = previewUrl;
+                            img.style.clipPath = 'none';
+                            review.classList.add('hidden');
+                            showToast('PNG transparan terdeteksi. File asli tidak diubah; klik Simpan untuk mengunggah.');
+                            return;
+                        }
+                    }
+                    processSignatureImage(image, type);
+                } catch (error) {
+                    alert('Gagal memeriksa gambar: ' + (error.message || error));
+                } finally {
+                    URL.revokeObjectURL(url);
+                }
             };
             image.onerror = () => { URL.revokeObjectURL(url); alert('Foto tidak dapat dibuka.'); };
             image.src = url;
