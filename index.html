@@ -923,7 +923,7 @@
                             <div class="bg-input/40 p-3.5 rounded-xl border border-panel space-y-3">
                                 <div class="flex items-center justify-between">
                                     <div class="flex items-center gap-3">
-                                        <div class="w-16 h-10 bg-panel border border-panel rounded flex items-center justify-center overflow-hidden shrink-0 p-0.5" id="profile-paraf-preview-box">
+                                        <div class="w-24 h-14 bg-panel border border-panel rounded flex items-center justify-center overflow-hidden shrink-0 p-1" id="profile-paraf-preview-box">
                                             <span class="text-[9px] text-sub italic">Kosong</span>
                                         </div>
                                         <div>
@@ -961,7 +961,7 @@
                             <div class="bg-input/40 p-3.5 rounded-xl border border-panel space-y-3">
                                 <div class="flex items-center justify-between">
                                     <div class="flex items-center gap-3">
-                                        <div class="w-20 h-10 bg-panel border border-panel rounded flex items-center justify-center overflow-hidden shrink-0 p-0.5" id="profile-ttd-preview-box">
+                                        <div class="w-24 h-14 bg-panel border border-panel rounded flex items-center justify-center overflow-hidden shrink-0 p-1" id="profile-ttd-preview-box">
                                             <span class="text-[9px] text-sub italic">Kosong</span>
                                         </div>
                                         <div>
@@ -2889,14 +2889,14 @@ function calculateRemainingDays(doc) {
             const parafBox = document.getElementById('profile-paraf-preview-box');
             if (parafBox) {
                 parafBox.innerHTML = currentUser.parafPng 
-                    ? `<img src="${currentUser.parafPng}" class="max-h-full object-contain" />` 
+                    ? `<img src="${currentUser.parafPng}" class="w-full h-full object-contain object-center" />` 
                     : `<span class="text-[9px] text-sub italic">Kosong</span>`;
             }
 
             const ttdBox = document.getElementById('profile-ttd-preview-box');
             if (ttdBox) {
                 ttdBox.innerHTML = currentUser.ttdPng 
-                    ? `<img src="${currentUser.ttdPng}" class="max-h-full object-contain" />` 
+                    ? `<img src="${currentUser.ttdPng}" class="w-full h-full object-contain object-center" />` 
                     : `<span class="text-[9px] text-sub italic">Kosong</span>`;
             }
         }
@@ -3108,19 +3108,57 @@ let isAIChatOpen = false;
 
             ctx.putImageData(original, 0, 0);
 
-            // Pangkas area kosong dengan margin agar ujung goresan tidak terpotong.
-            const pad = Math.max(4, Math.round(Math.max(maxX - minX, maxY - minY) * 0.025));
-            const cropX = Math.max(0, minX - pad);
-            const cropY = Math.max(0, minY - pad);
-            const cropW = Math.min(width - cropX, maxX - minX + 1 + pad * 2);
-            const cropH = Math.min(height - cropY, maxY - minY + 1 + pad * 2);
+            // Hitung ulang batas tinta dengan ambang alpha lebih tinggi agar
+            // noise tipis di kertas tidak membuat hasil crop bergeser.
+            let inkMinX = width, inkMinY = height, inkMaxX = -1, inkMaxY = -1;
+            let strongInkPixels = 0;
+            for (let y = 0; y < height; y++) {
+                for (let x = 0; x < width; x++) {
+                    const alpha = pixels[(y * width + x) * 4 + 3];
+                    if (alpha >= 72) {
+                        strongInkPixels++;
+                        if (x < inkMinX) inkMinX = x;
+                        if (x > inkMaxX) inkMaxX = x;
+                        if (y < inkMinY) inkMinY = y;
+                        if (y > inkMaxY) inkMaxY = y;
+                    }
+                }
+            }
+            if (strongInkPixels < 8 || inkMaxX < inkMinX || inkMaxY < inkMinY) {
+                alert('Goresan paraf/TTD terlalu tipis untuk diproses. Ambil foto lebih dekat dengan tinta yang jelas.');
+                return;
+            }
 
+            // Crop ketat pada tinta, lalu tambahkan margin kecil yang seimbang.
+            const inkW = inkMaxX - inkMinX + 1;
+            const inkH = inkMaxY - inkMinY + 1;
+            const padX = Math.max(5, Math.round(inkW * 0.06));
+            const padY = Math.max(5, Math.round(inkH * 0.06));
+            const cropX = Math.max(0, inkMinX - padX);
+            const cropY = Math.max(0, inkMinY - padY);
+            const cropW = Math.min(width - cropX, inkW + padX * 2);
+            const cropH = Math.min(height - cropY, inkH + padY * 2);
+
+            // Kanvas transparan beresolusi tinggi. Goresan dipusatkan secara
+            // matematis dan diperbesar sampai memenuhi area aman tanpa distorsi.
             const output = document.createElement('canvas');
-            output.width = cropW;
-            output.height = cropH;
-            output.getContext('2d').drawImage(
-                work, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH
-            );
+            const outputMax = 1200;
+            const sourceRatio = cropW / cropH;
+            output.width = sourceRatio >= 1 ? outputMax : Math.max(1, Math.round(outputMax * sourceRatio));
+            output.height = sourceRatio >= 1 ? Math.max(1, Math.round(outputMax / sourceRatio)) : outputMax;
+
+            const outCtx = output.getContext('2d');
+            const safeW = output.width * 0.88;
+            const safeH = output.height * 0.82;
+            const fitScale = Math.min(safeW / cropW, safeH / cropH);
+            const drawW = cropW * fitScale;
+            const drawH = cropH * fitScale;
+            const drawX = (output.width - drawW) / 2;
+            const drawY = (output.height - drawH) / 2;
+            outCtx.clearRect(0, 0, output.width, output.height);
+            outCtx.imageSmoothingEnabled = true;
+            outCtx.imageSmoothingQuality = 'high';
+            outCtx.drawImage(work, cropX, cropY, cropW, cropH, drawX, drawY, drawW, drawH);
 
             output.toBlob(blob => {
                 if (!blob) {
@@ -3586,7 +3624,7 @@ let isAIChatOpen = false;
 
             const standby = document.getElementById('standby-cursor-stamp');
             const standbySizes = {
-                paraf: [110, 60], ttd: [210, 82],
+                paraf: [140, 70], ttd: [230, 90],
                 check: [40, 40], cross: [40, 40],
                 highlight: [140, 30], redline: [150, 12],
                 text: [100, 40], text_custom: [100, 40]
@@ -3630,8 +3668,8 @@ let isAIChatOpen = false;
                     return;
                 }
 
-                let w = currentType === 'ttd' ? 210 : (currentType === 'paraf' ? 110 : 100);
-                let h = currentType === 'ttd' ? 82 : (currentType === 'paraf' ? 60 : 40);
+                let w = currentType === 'ttd' ? 230 : (currentType === 'paraf' ? 140 : 100);
+                let h = currentType === 'ttd' ? 90 : (currentType === 'paraf' ? 70 : 40);
                 if (['check','cross'].includes(currentType)) { w = 40; h = 40; }
                 else if (currentType === 'highlight') { w = 140; h = 30; }
                 else if (currentType === 'redline') { w = 150; h = 12; }
