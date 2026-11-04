@@ -3010,30 +3010,89 @@ let isAIChatOpen = false;
         function processSignatureImage(source, type) {
             const width = source.width || source.videoWidth;
             const height = source.height || source.videoHeight;
-            if (!width || !height) { alert('Foto tidak dapat dibaca.'); return; }
+            if (!width || !height) {
+                alert('Foto tidak dapat dibaca.');
+                return;
+            }
+
+            // Ambil salinan foto asli untuk diproses tanpa mengubah sumber.
             const work = document.createElement('canvas');
-            work.width = width; work.height = height;
+            work.width = width;
+            work.height = height;
             const ctx = work.getContext('2d', { willReadFrequently: true });
             ctx.drawImage(source, 0, 0, width, height);
-            const image = ctx.getImageData(0, 0, width, height);
-            const data = image.data;
+
+            const original = ctx.getImageData(0, 0, width, height);
+            const pixels = original.data;
+
+            // Buat peta warna kertas/bayangan dengan blur skala kecil.
+            // Goresan tinta yang tipis akan hilang pada peta ini, sedangkan
+            // gradasi cahaya dan bayangan kertas tetap terdeteksi.
+            const bgCanvas = document.createElement('canvas');
+            const bgMax = 100;
+            const bgScale = Math.min(1, bgMax / Math.max(width, height));
+            bgCanvas.width = Math.max(1, Math.round(width * bgScale));
+            bgCanvas.height = Math.max(1, Math.round(height * bgScale));
+            const bgCtx = bgCanvas.getContext('2d', { willReadFrequently: true });
+            bgCtx.imageSmoothingEnabled = true;
+            bgCtx.imageSmoothingQuality = 'high';
+            bgCtx.drawImage(work, 0, 0, bgCanvas.width, bgCanvas.height);
+
+            // Blur peta latar agar tekstur kertas dan bayangan tidak dianggap tinta.
+            const blurCanvas = document.createElement('canvas');
+            blurCanvas.width = bgCanvas.width;
+            blurCanvas.height = bgCanvas.height;
+            const blurCtx = blurCanvas.getContext('2d', { willReadFrequently: true });
+            blurCtx.filter = 'blur(2px)';
+            blurCtx.drawImage(bgCanvas, 0, 0);
+            blurCtx.filter = 'none';
+            const bgData = blurCtx.getImageData(0, 0, blurCanvas.width, blurCanvas.height).data;
+
+            const sampleBackground = (x, y, channel) => {
+                const bx = Math.min(blurCanvas.width - 1,
+                    Math.max(0, Math.round(x * (blurCanvas.width - 1) / Math.max(1, width - 1))));
+                const by = Math.min(blurCanvas.height - 1,
+                    Math.max(0, Math.round(y * (blurCanvas.height - 1) / Math.max(1, height - 1))));
+                return bgData[(by * blurCanvas.width + bx) * 4 + channel];
+            };
+
             let minX = width, minY = height, maxX = -1, maxY = -1;
-            // Estimasi kertas putih/terang dan ubah menjadi alpha transparan.
-            // Piksel tinta gelap dipertahankan; warna abu-abu terang diberi alpha bertahap.
+            let detectedPixels = 0;
+
+            // Alpha ditentukan oleh perbedaan tinta terhadap warna kertas lokal,
+            // bukan oleh tingkat gelap absolut. Ini mengurangi bayangan abu-abu.
             for (let y = 0; y < height; y++) {
                 for (let x = 0; x < width; x++) {
                     const i = (y * width + x) * 4;
-                    const r = data[i], g = data[i + 1], b = data[i + 2];
-                    const luminance = 0.299 * r + 0.587 * g + 0.114 * b;
-                    const saturation = Math.max(r,g,b) - Math.min(r,g,b);
-                    const darkness = 255 - luminance;
-                    // Ambang dibuat bertahap untuk mempertahankan antialias tinta.
-                    let alpha = Math.max(0, Math.min(255, (darkness - 18) * 3.2));
-                    // Kertas berwarna/berbayang yang cukup terang juga dibersihkan.
-                    if (luminance > 238 && saturation < 28) alpha = 0;
-                    if (luminance > 220 && saturation < 18) alpha = Math.min(alpha, Math.max(0, (238 - luminance) * 12));
-                    data[i + 3] = Math.round(alpha);
-                    if (alpha > 18) {
+                    const r = pixels[i], g = pixels[i + 1], b = pixels[i + 2];
+
+                    const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+                    const bgR = sampleBackground(x, y, 0);
+                    const bgG = sampleBackground(x, y, 1);
+                    const bgB = sampleBackground(x, y, 2);
+                    const bgLum = 0.299 * bgR + 0.587 * bgG + 0.114 * bgB;
+
+                    const localContrast = bgLum - lum;
+                    const saturation = Math.max(r, g, b) - Math.min(r, g, b);
+
+                    // Tekstur/warna kertas yang berubah perlahan dihapus.
+                    // Tinta gelap yang kontras terhadap kertas tetap dipertahankan.
+                    let strength = (localContrast - 10) / 42;
+                    strength = Math.max(0, Math.min(1, strength));
+                    strength = strength * strength * (3 - 2 * strength);
+
+                    // Abaikan variasi warna tipis pada kertas, tetapi jangan
+                    // menghapus tinta berwarna yang benar-benar kontras.
+                    if (localContrast < 17 && saturation < 35) strength = 0;
+
+                    // Hilangkan noise sangat tipis dari sensor/kertas.
+                    let alpha = Math.round(strength * 255);
+                    if (alpha < 22) alpha = 0;
+
+                    pixels[i + 3] = alpha;
+
+                    if (alpha > 24) {
+                        detectedPixels++;
                         if (x < minX) minX = x;
                         if (x > maxX) maxX = x;
                         if (y < minY) minY = y;
@@ -3041,26 +3100,44 @@ let isAIChatOpen = false;
                     }
                 }
             }
-            if (maxX < minX || maxY < minY) {
-                alert('Tanda tangan/paraf tidak terdeteksi. Gunakan tinta lebih gelap, kertas putih, dan pencahayaan lebih baik.');
+
+            if (!detectedPixels || maxX < minX || maxY < minY) {
+                alert('Paraf/TTD belum terdeteksi. Gunakan tinta yang lebih gelap, letakkan kertas polos di bawahnya, dan ambil foto dengan pencahayaan merata.');
                 return;
             }
-            ctx.putImageData(image, 0, 0);
-            const pad = Math.max(12, Math.round(Math.max(maxX - minX, maxY - minY) * 0.035));
-            const cropX = Math.max(0, minX - pad), cropY = Math.max(0, minY - pad);
-            const cropW = Math.min(width - cropX, maxX - minX + pad * 2);
-            const cropH = Math.min(height - cropY, maxY - minY + pad * 2);
+
+            ctx.putImageData(original, 0, 0);
+
+            // Pangkas area kosong dengan margin agar ujung goresan tidak terpotong.
+            const pad = Math.max(10, Math.round(Math.max(maxX - minX, maxY - minY) * 0.06));
+            const cropX = Math.max(0, minX - pad);
+            const cropY = Math.max(0, minY - pad);
+            const cropW = Math.min(width - cropX, maxX - minX + 1 + pad * 2);
+            const cropH = Math.min(height - cropY, maxY - minY + 1 + pad * 2);
+
             const output = document.createElement('canvas');
-            output.width = cropW; output.height = cropH;
-            output.getContext('2d').drawImage(work, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
+            output.width = cropW;
+            output.height = cropH;
+            output.getContext('2d').drawImage(
+                work, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH
+            );
+
             output.toBlob(blob => {
-                if (!blob) { alert('Gagal membuat PNG transparan.'); return; }
-                signaturePendingPng[type] = new File([blob], `${type}-transparan.png`, { type: 'image/png' });
+                if (!blob) {
+                    alert('Gagal membuat PNG transparan.');
+                    return;
+                }
+
+                signaturePendingPng[type] = new File(
+                    [blob], `${type}-transparan.png`, { type: 'image/png' }
+                );
+
                 const preview = document.getElementById(`signature-review-${type}`);
                 const img = document.getElementById(`signature-review-image-${type}`);
                 if (img.dataset.objectUrl) URL.revokeObjectURL(img.dataset.objectUrl);
                 const url = URL.createObjectURL(blob);
-                img.src = url; img.dataset.objectUrl = url;
+                img.src = url;
+                img.dataset.objectUrl = url;
                 preview.classList.remove('hidden');
             }, 'image/png');
         }
@@ -3073,7 +3150,7 @@ let isAIChatOpen = false;
             transfer.items.add(file);
             input.files = transfer.files;
             document.getElementById(`signature-review-${type}`).classList.add('hidden');
-            showToast('Hasil PNG transparan siap disimpan. Klik Simpan untuk memperbarui aset.');
+            showToast('Hasil PNG transparan siap. Klik Simpan untuk mengunggah ke penyimpanan cloud dan memperbarui aset akun.');
         }
 
         function discardSignatureReview(type) {
