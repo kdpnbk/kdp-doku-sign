@@ -426,8 +426,60 @@
                         </div>
                     </div>
                 </div>
-                <div><label class="block text-[11px] font-medium text-heading mb-1">Upload PNG Paraf</label><input type="file" id="reg-paraf-file" accept="image/png" class="w-full text-xs text-sub bg-input rounded-lg border border-panel"></div>
-                <div><label class="block text-[11px] font-medium text-heading mb-1">Upload PNG TTD</label><input type="file" id="reg-ttd-file" accept="image/png" class="w-full text-xs text-sub bg-input rounded-lg border border-panel"></div>
+                <div class="space-y-2"><label class="block text-[11px] font-medium text-heading mb-1">Upload PNG Paraf</label><input type="file" id="reg-paraf-file" accept="image/png,image/jpeg,image/webp" class="w-full text-xs text-sub bg-input rounded-lg border border-panel">
+                <div id="signature-review-reg-paraf" class="hidden border border-panel rounded-lg p-2 bg-panel space-y-2">
+                    <div class="text-xs font-bold text-heading">Edit PNG Paraf — geser, cubit & crop</div>
+                    <div id="editor-stage-reg-paraf" class="relative w-full h-56 rounded-lg overflow-hidden select-none"
+                         style="touch-action:none;background-color:#e5e7eb;background-image:linear-gradient(45deg,#f8fafc 25%,transparent 25%),linear-gradient(-45deg,#f8fafc 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#f8fafc 75%),linear-gradient(-45deg,transparent 75%,#f8fafc 75%);background-size:16px 16px;background-position:0 0,0 8px,8px -8px,-8px 0;">
+                        <img id="signature-review-image-reg-paraf" alt="Preview Paraf pendaftaran" draggable="false"
+                             style="position:absolute;left:50%;top:50%;width:auto;height:auto;max-width:none;max-height:none;object-fit:fill;transform:translate(-50%,-50%);transform-origin:center center;pointer-events:none;user-select:none;">
+                        <div id="crop-box-reg-paraf" class="absolute border-2 border-dashed border-yellow-500"
+                             style="left:12%;top:12%;width:76%;height:76%;box-sizing:border-box;touch-action:none;">
+                            <div class="absolute inset-0" style="pointer-events:none;background:rgba(234,179,8,.06);"></div>
+                            <span data-crop-handle="move" class="absolute inset-0" style="cursor:move;touch-action:none;"></span>
+                            <span data-crop-handle="nw" class="absolute -left-2 -top-2 w-5 h-5 rounded-full bg-yellow-500 border-2 border-white" style="touch-action:none;"></span>
+                            <span data-crop-handle="ne" class="absolute -right-2 -top-2 w-5 h-5 rounded-full bg-yellow-500 border-2 border-white" style="touch-action:none;"></span>
+                            <span data-crop-handle="sw" class="absolute -left-2 -bottom-2 w-5 h-5 rounded-full bg-yellow-500 border-2 border-white" style="touch-action:none;"></span>
+                            <span data-crop-handle="se" class="absolute -right-2 -bottom-2 w-5 h-5 rounded-full bg-yellow-500 border-2 border-white" style="touch-action:none;"></span>
+                            <span data-crop-handle="n" class="absolute left-1/2 -top-2 -translate-x-1/2 w-8 h-4 rounded bg-yellow-500 border border-white" style="touch-action:none;"></span>
+                            <span data-crop-handle="s" class="absolute left-1/2 -bottom-2 -translate-x-1/2 w-8 h-4 rounded bg-yellow-500 border border-white" style="touch-action:none;"></span>
+                            <span data-crop-handle="w" class="absolute -left-2 top-1/2 -translate-y-1/2 w-4 h-8 rounded bg-yellow-500 border border-white" style="touch-action:none;"></span>
+                            <span data-crop-handle="e" class="absolute -right-2 top-1/2 -translate-y-1/2 w-4 h-8 rounded bg-yellow-500 border border-white" style="touch-action:none;"></span>
+                        </div>
+                    </div>
+                    <div class="text-[11px] text-sub">Geser gambar • Cubit dua jari untuk skala • Tarik kotak kuning untuk crop.</div>
+                    <div class="flex justify-end gap-2">
+                        <button type="button" onclick="discardSignatureReview('reg-paraf')" class="px-3 py-1.5 rounded border border-panel text-heading text-xs">Buang</button>
+                        <button type="button" onclick="acceptSignatureReview('reg-paraf')" class="px-3 py-1.5 rounded bg-premium-gold text-regal-black text-xs font-bold">Gunakan hasil</button>
+                    </div>
+                </div></div>
+                <div class="space-y-2"><label class="block text-[11px] font-medium text-heading mb-1">Upload PNG TTD</label><input type="file" id="reg-ttd-file" accept="image/png,image/jpeg,image/webp" class="w-full text-xs text-sub bg-input rounded-lg border border-panel">
+                <div id="signature-review-reg-ttd" class="hidden border border-panel rounded-lg p-2 bg-panel space-y-2">
+                    <div class="text-xs font-bold text-heading">Edit PNG TTD — geser, cubit & crop</div>
+                    <div id="editor-stage-reg-ttd" class="relative w-full h-56 rounded-lg overflow-hidden select-none"
+                         style="touch-action:none;background-color:#e5e7eb;background-image:linear-gradient(45deg,#f8fafc 25%,transparent 25%),linear-gradient(-45deg,#f8fafc 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#f8fafc 75%),linear-gradient(-45deg,transparent 75%,#f8fafc 75%);background-size:16px 16px;background-position:0 0,0 8px,8px -8px,-8px 0;">
+                        <img id="signature-review-image-reg-ttd" alt="Preview TTD pendaftaran" draggable="false"
+                             style="position:absolute;left:50%;top:50%;width:auto;height:auto;max-width:none;max-height:none;object-fit:fill;transform:translate(-50%,-50%);transform-origin:center center;pointer-events:none;user-select:none;">
+                        <div id="crop-box-reg-ttd" class="absolute border-2 border-dashed border-yellow-500"
+                             style="left:12%;top:12%;width:76%;height:76%;box-sizing:border-box;touch-action:none;">
+                            <div class="absolute inset-0" style="pointer-events:none;background:rgba(234,179,8,.06);"></div>
+                            <span data-crop-handle="move" class="absolute inset-0" style="cursor:move;touch-action:none;"></span>
+                            <span data-crop-handle="nw" class="absolute -left-2 -top-2 w-5 h-5 rounded-full bg-yellow-500 border-2 border-white" style="touch-action:none;"></span>
+                            <span data-crop-handle="ne" class="absolute -right-2 -top-2 w-5 h-5 rounded-full bg-yellow-500 border-2 border-white" style="touch-action:none;"></span>
+                            <span data-crop-handle="sw" class="absolute -left-2 -bottom-2 w-5 h-5 rounded-full bg-yellow-500 border-2 border-white" style="touch-action:none;"></span>
+                            <span data-crop-handle="se" class="absolute -right-2 -bottom-2 w-5 h-5 rounded-full bg-yellow-500 border-2 border-white" style="touch-action:none;"></span>
+                            <span data-crop-handle="n" class="absolute left-1/2 -top-2 -translate-x-1/2 w-8 h-4 rounded bg-yellow-500 border border-white" style="touch-action:none;"></span>
+                            <span data-crop-handle="s" class="absolute left-1/2 -bottom-2 -translate-x-1/2 w-8 h-4 rounded bg-yellow-500 border border-white" style="touch-action:none;"></span>
+                            <span data-crop-handle="w" class="absolute -left-2 top-1/2 -translate-y-1/2 w-4 h-8 rounded bg-yellow-500 border border-white" style="touch-action:none;"></span>
+                            <span data-crop-handle="e" class="absolute -right-2 top-1/2 -translate-y-1/2 w-4 h-8 rounded bg-yellow-500 border border-white" style="touch-action:none;"></span>
+                        </div>
+                    </div>
+                    <div class="text-[11px] text-sub">Geser gambar • Cubit dua jari untuk skala • Tarik kotak kuning untuk crop.</div>
+                    <div class="flex justify-end gap-2">
+                        <button type="button" onclick="discardSignatureReview('reg-ttd')" class="px-3 py-1.5 rounded border border-panel text-heading text-xs">Buang</button>
+                        <button type="button" onclick="acceptSignatureReview('reg-ttd')" class="px-3 py-1.5 rounded bg-premium-gold text-regal-black text-xs font-bold">Gunakan hasil</button>
+                    </div>
+                </div></div>
                 <button type="button" onclick="handleRegister()" class="w-full bg-premium-gold text-regal-black py-2 rounded-lg text-xs font-bold">Daftar Akun</button>
             </div>
         </div>
@@ -2988,11 +3040,13 @@ let isAIChatOpen = false;
         let signatureCameraStream = null;
         let signatureCameraFacing = 'environment';
         let signatureCaptureTarget = 'ttd';
-        let signaturePendingPng = { paraf: null, ttd: null };
-        let signatureCropBase = { paraf: null, ttd: null };
+        let signaturePendingPng = { paraf: null, ttd: null, 'reg-paraf': null, 'reg-ttd': null };
+        let signatureCropBase = { paraf: null, ttd: null, 'reg-paraf': null, 'reg-ttd': null };
         const signatureEditorState = {
             paraf: { scale: 1, x: 0, y: 0, crop: { x: 0.12, y: 0.12, w: 0.76, h: 0.76 }, pointers: new Map(), gesture: null },
-            ttd:   { scale: 1, x: 0, y: 0, crop: { x: 0.12, y: 0.12, w: 0.76, h: 0.76 }, pointers: new Map(), gesture: null }
+            ttd:   { scale: 1, x: 0, y: 0, crop: { x: 0.12, y: 0.12, w: 0.76, h: 0.76 }, pointers: new Map(), gesture: null },
+            'reg-paraf': { scale: 1, x: 0, y: 0, crop: { x: 0.12, y: 0.12, w: 0.76, h: 0.76 }, pointers: new Map(), gesture: null },
+            'reg-ttd': { scale: 1, x: 0, y: 0, crop: { x: 0.12, y: 0.12, w: 0.76, h: 0.76 }, pointers: new Map(), gesture: null }
         };
 
 
@@ -3425,12 +3479,14 @@ let isAIChatOpen = false;
             }
         }
 
-        ['paraf', 'ttd'].forEach(installSignatureEditor);
+        ['paraf', 'ttd', 'reg-paraf', 'reg-ttd'].forEach(installSignatureEditor);
 
         function acceptSignatureReview(type) {
             const file = signaturePendingPng[type];
             if (!file) { alert('Belum ada hasil yang dapat digunakan.'); return; }
-            const input = document.getElementById(`profile-${type}-file`);
+            const inputId = type.startsWith('reg-') ? `${type}-file` : `profile-${type}-file`;
+            const input = document.getElementById(inputId);
+            if (!input) { alert('Kolom file tujuan tidak ditemukan.'); return; }
             const transfer = new DataTransfer();
             transfer.items.add(file);
             input.files = transfer.files;
@@ -3500,6 +3556,13 @@ let isAIChatOpen = false;
             if (input) input.addEventListener('change', () => {
                 const file = input.files && input.files[0];
                 if (file) handleSignatureGalleryChange(type, file);
+            });
+        });
+        ['paraf', 'ttd'].forEach(type => {
+            const input = document.getElementById(`reg-${type}-file`);
+            if (input) input.addEventListener('change', () => {
+                const file = input.files && input.files[0];
+                if (file) handleSignatureGalleryChange(`reg-${type}`, file);
             });
         });
 
