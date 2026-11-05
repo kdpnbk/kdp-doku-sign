@@ -163,7 +163,7 @@
 
     <style>
       .pdf-page-canvas-wrapper {
-        position: relative !important;
+        position: relative !important; margin-left: auto !important; margin-right: auto !important;
         margin-bottom: 8px !important;
         box-shadow: 0 4px 15px rgba(0,0,0,0.8) !important;
         background: #ffffff !important;
@@ -180,6 +180,8 @@
         display: flex; align-items: center; justify-content: center; touch-action: none;
       }
       .placed-stamp-item:active { cursor: grabbing; }
+      #pdf-scroll-view { touch-action: pan-x pan-y !important; overscroll-behavior: contain; }
+      .placed-stamp-item, .placed-stamp-item * { touch-action: none; }
       .stamp-delete-btn {
         position: absolute; top: -10px; left: -10px; width: 22px; height: 22px;
         background: #e11d48; color: #fff; border-radius: 50%; font-size: 11px; font-weight: bold;
@@ -233,7 +235,7 @@
           touch-action: pan-x pan-y !important; overscroll-behavior: contain;
         }
 
-        #pdf-pages-stack-container { width: 100% !important; display: flex !important; flex-direction: column !important; align-items: center !important; }
+        #pdf-pages-stack-container { width: max-content !important; min-width: 100% !important; display: flex !important; flex-direction: column !important; align-items: flex-start !important; }
 
         #mobile-bottom-action-panel {
           flex: 0 0 24% !important; height: 24dvh !important; overflow-y: auto !important; background: #141414 !important;
@@ -4205,65 +4207,62 @@ let isAIChatOpen = false;
                         div.appendChild(rotBtn);
                         div.appendChild(resizeHandle);
 
-                        let isDragging = false, startX, startY;
-                        const startDrag = (clientX, clientY) => {
-                            isDragging = true;
-                            startX = clientX - (s.x * reviewZoom);
-                            startY = clientY - (s.y * reviewZoom);
-                        };
-                        const onDrag = (clientX, clientY) => {
-                            if (!isDragging) return;
-                            s.x = Math.max(0, (clientX - startX) / reviewZoom);
-                            s.y = Math.max(0, (clientY - startY) / reviewZoom);
-                            div.style.left = (s.x * reviewZoom) + 'px';
-                            div.style.top = (s.y * reviewZoom) + 'px';
-                        };
-                        const endDrag = () => { isDragging = false; };
-
-                        div.onmousedown = (e) => {
+                        // Koordinat s.x/s.y selalu disimpan dalam koordinat halaman PDF
+                        // (zoom 100%). Zoom hanya mengubah tampilan, bukan posisi aslinya.
+                        let dragPointerId = null, dragStartX = 0, dragStartY = 0;
+                        let stampStartX = 0, stampStartY = 0;
+                        div.addEventListener('pointerdown', (e) => {
                             if (e.target === delBtn || e.target === rotBtn || e.target === resizeHandle) return;
-                            startDrag(e.clientX, e.clientY);
+                            if (e.button !== undefined && e.button !== 0) return;
+                            dragPointerId = e.pointerId;
+                            dragStartX = e.clientX;
+                            dragStartY = e.clientY;
+                            stampStartX = s.x;
+                            stampStartY = s.y;
+                            try { div.setPointerCapture(e.pointerId); } catch (_) {}
+                            e.preventDefault();
                             e.stopPropagation();
+                        });
+                        div.addEventListener('pointermove', (e) => {
+                            if (dragPointerId !== e.pointerId) return;
+                            s.x = Math.max(0, stampStartX + (e.clientX - dragStartX) / reviewZoom);
+                            s.y = Math.max(0, stampStartY + (e.clientY - dragStartY) / reviewZoom);
+                            div.style.left = `${s.x * reviewZoom}px`;
+                            div.style.top = `${s.y * reviewZoom}px`;
+                        });
+                        const endStampDrag = (e) => {
+                            if (dragPointerId !== e.pointerId) return;
+                            dragPointerId = null;
+                            try { div.releasePointerCapture(e.pointerId); } catch (_) {}
                         };
-                        window.addEventListener('mousemove', (e) => { onDrag(e.clientX, e.clientY); });
-                        window.addEventListener('mouseup', endDrag);
+                        div.addEventListener('pointerup', endStampDrag);
+                        div.addEventListener('pointercancel', endStampDrag);
+                        div.addEventListener('lostpointercapture', endStampDrag);
 
-                        div.ontouchstart = (e) => {
-                            if (e.target === delBtn || e.target === rotBtn || e.target === resizeHandle) return;
-                            const t = e.touches[0];
-                            startDrag(t.clientX, t.clientY);
-                            e.stopPropagation();
-                        };
-                        window.addEventListener('touchmove', (e) => {
-                            if (!isDragging) return;
-                            const t = e.touches[0];
-                            onDrag(t.clientX, t.clientY);
-                        }, { passive: true });
-                        window.addEventListener('touchend', endDrag);
-
-                        let isResizing = false, initW, initH, initMouseX, initMouseY;
-                        resizeHandle.onmousedown = (e) => { isResizing = true; initW = s.width; initH = s.height; initMouseX = e.clientX; initMouseY = e.clientY; e.stopPropagation(); };
-                        window.addEventListener('mousemove', (e) => {
-                            if (!isResizing) return;
+                        let resizePointerId = null, initW = 0, initH = 0, initMouseX = 0, initMouseY = 0;
+                        resizeHandle.style.touchAction = 'none';
+                        resizeHandle.addEventListener('pointerdown', (e) => {
+                            resizePointerId = e.pointerId;
+                            initW = s.width; initH = s.height;
+                            initMouseX = e.clientX; initMouseY = e.clientY;
+                            try { resizeHandle.setPointerCapture(e.pointerId); } catch (_) {}
+                            e.preventDefault(); e.stopPropagation();
+                        });
+                        resizeHandle.addEventListener('pointermove', (e) => {
+                            if (resizePointerId !== e.pointerId) return;
                             s.width = Math.max(30, initW + (e.clientX - initMouseX) / reviewZoom);
                             s.height = Math.max(20, initH + (e.clientY - initMouseY) / reviewZoom);
-                            div.style.width = (s.width * reviewZoom) + 'px'; div.style.height = (s.height * reviewZoom) + 'px';
+                            div.style.width = `${s.width * reviewZoom}px`;
+                            div.style.height = `${s.height * reviewZoom}px`;
                         });
-                        window.addEventListener('mouseup', () => { isResizing = false; });
-
-                        resizeHandle.ontouchstart = (e) => {
-                            isResizing = true; initW = s.width; initH = s.height;
-                            const t = e.touches[0]; initMouseX = t.clientX; initMouseY = t.clientY;
-                            e.stopPropagation();
+                        const endStampResize = (e) => {
+                            if (resizePointerId !== e.pointerId) return;
+                            resizePointerId = null;
+                            try { resizeHandle.releasePointerCapture(e.pointerId); } catch (_) {}
                         };
-                        window.addEventListener('touchmove', (e) => {
-                            if (!isResizing) return;
-                            const t = e.touches[0];
-                            s.width = Math.max(30, initW + (t.clientX - initMouseX) / reviewZoom);
-                            s.height = Math.max(20, initH + (t.clientY - initMouseY) / reviewZoom);
-                            div.style.width = (s.width * reviewZoom) + 'px'; div.style.height = (s.height * reviewZoom) + 'px';
-                        }, { passive: true });
-                        window.addEventListener('touchend', () => { isResizing = false; });
+                        resizeHandle.addEventListener('pointerup', endStampResize);
+                        resizeHandle.addEventListener('pointercancel', endStampResize);
+                        resizeHandle.addEventListener('lostpointercapture', endStampResize);
                     }
 
                     layer.appendChild(div);
@@ -4987,7 +4986,7 @@ async function compressAvatarImage(file) {
                             const pageCssScale = containerWidth / pageBaseViewport.width;
                             const cssViewport = page.getViewport({ scale: pageCssScale });
                             // Batasi pixel ratio agar preview tidak membuat canvas terlalu besar.
-                            const pixelRatio = Math.min(1.5, Math.max(1, window.devicePixelRatio || 1));
+                            const pixelRatio = Math.min(3, Math.max(2, window.devicePixelRatio || 1));
                             const renderViewport = page.getViewport({ scale: pageCssScale * reviewZoom * pixelRatio });
 
                             wrapper.dataset.baseWidth = String(Math.floor(cssViewport.width));
@@ -5099,12 +5098,21 @@ async function compressAvatarImage(file) {
                     const viewport = page.getViewport({ scale: baseScale * reviewZoom * pixelRatio });
                     const canvas = wrapper.querySelector('canvas');
                     if (!canvas) continue;
+                    if (wrapper._zoomRenderTask) {
+                        try { wrapper._zoomRenderTask.cancel(); } catch (_) {}
+                        wrapper._zoomRenderTask = null;
+                    }
                     canvas.width = Math.max(1, Math.ceil(viewport.width));
                     canvas.height = Math.max(1, Math.ceil(viewport.height));
                     canvas.style.width = `${Math.round(baseWidth * reviewZoom)}px`;
                     canvas.style.height = `${Math.round(Number(wrapper.dataset.baseHeight) * reviewZoom)}px`;
                     const context = canvas.getContext('2d', { alpha: false });
-                    await page.render({ canvasContext: context, viewport }).promise;
+                    const renderTask = page.render({ canvasContext: context, viewport });
+                    wrapper._zoomRenderTask = renderTask;
+                    try { await renderTask.promise; }
+                    finally {
+                        if (wrapper._zoomRenderTask === renderTask) wrapper._zoomRenderTask = null;
+                    }
                 } catch (error) {
                     console.warn('Render ulang PDF pada zoom gagal:', error);
                 }
@@ -5112,7 +5120,7 @@ async function compressAvatarImage(file) {
             if (token === reviewZoomRenderToken) renderAllStampsLayers();
         }
 
-        function applyReviewZoom() {
+        function applyReviewZoom(renderQuality = true) {
             const stack = document.getElementById('pdf-pages-stack-container');
             const scroll = document.getElementById('pdf-scroll-view');
             const label = document.getElementById('review-zoom-label');
@@ -5143,7 +5151,7 @@ async function compressAvatarImage(file) {
             }
             if (label) label.textContent = `${Math.round(reviewZoom * 100)}%`;
             renderAllStampsLayers();
-            rerenderReviewCanvasesAtZoom();
+            if (renderQuality) rerenderReviewCanvasesAtZoom();
         }
 
         function changeReviewZoom(delta) {
@@ -5204,7 +5212,7 @@ async function compressAvatarImage(file) {
                 const ratio = nextZoom / reviewZoom;
 
                 reviewZoom = nextZoom;
-                applyReviewZoom();
+                applyReviewZoom(false);
 
                 // Pertahankan titik PDF di bawah jari agar zoom terasa alami seperti pembaca PDF.
                 const currentAnchorX = currentMid.x - rect.left;
@@ -5216,9 +5224,11 @@ async function compressAvatarImage(file) {
             }, { passive: false });
 
             const endPinch = (event) => {
-                if (event.touches && event.touches.length < 2) {
+                if (event.touches && event.touches.length < 2 && reviewPinchActive) {
                     reviewPinchActive = false;
                     reviewPinchStartDistance = 0;
+                    // Render ulang sekali pada resolusi tinggi setelah gerakan cubit selesai.
+                    rerenderReviewCanvasesAtZoom();
                 }
             };
             scroll.addEventListener('touchend', endPinch, { passive: true });
@@ -5489,7 +5499,7 @@ async function compressAvatarImage(file) {
                             }
 
                             targetPage.drawImage(embedded, { 
-                                x: pdfX + (pdfW - drawW) / 2, 
+                                x: pdfX + (pdfW * 0.10), 
                                 y: pdfY + (pdfH - drawH) / 2, 
                                 width: drawW, 
                                 height: drawH 
@@ -5506,7 +5516,7 @@ async function compressAvatarImage(file) {
 
                     const font = await pdfDoc.embedFont(PDFLib.StandardFonts.HelveticaBold);
                     targetPage.drawText(dateStr, {
-                        x: pdfX + (pdfW * 0.68),
+                        x: pdfX + (pdfW * 0.42),
                         y: pdfY + (pdfH / 2) - 4,
                         size: 9 * scaleX,
                         font: font,
