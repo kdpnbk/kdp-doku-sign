@@ -162,7 +162,7 @@
     </style>
 
     <style>
-      .pdf-page-canvas-wrapper {
+      .pdf-page-canvas-wrapper { margin-left: auto !important; margin-right: auto !important; flex-shrink: 0 !important;
         position: relative !important; margin-left: auto !important; margin-right: auto !important;
         margin-bottom: 8px !important;
         box-shadow: 0 4px 15px rgba(0,0,0,0.8) !important;
@@ -235,7 +235,7 @@
           touch-action: pan-x pan-y !important; overscroll-behavior: contain;
         }
 
-        #pdf-pages-stack-container { width: max-content !important; min-width: 100% !important; display: flex !important; flex-direction: column !important; align-items: flex-start !important; }
+        #pdf-pages-stack-container { width: max-content !important; min-width: 100% !important; display: flex !important; flex-direction: column !important; align-items: stretch !important; box-sizing: border-box !important; }
 
         #mobile-bottom-action-panel {
           flex: 0 0 24% !important; height: 24dvh !important; overflow-y: auto !important; background: #141414 !important;
@@ -4010,7 +4010,14 @@ let isAIChatOpen = false;
             const handlePlacementAction = (clientX, clientY) => {
                 if (!activeStandbyType) return;
                 const rect = wrapperDiv.getBoundingClientRect();
-                const pt = { x: (clientX - rect.left) / reviewZoom, y: (clientY - rect.top) / reviewZoom };
+                const baseWidth = Number(wrapperDiv.dataset.baseWidth) || rect.width / reviewZoom;
+                const baseHeight = Number(wrapperDiv.dataset.baseHeight) || rect.height / reviewZoom;
+                const scaleX = rect.width / baseWidth;
+                const scaleY = rect.height / baseHeight;
+                const pt = {
+                    x: (clientX - rect.left) / scaleX,
+                    y: (clientY - rect.top) / scaleY
+                };
 
                 const currentType = activeStandbyType;
                 activeStandbyType = null;
@@ -4211,6 +4218,12 @@ let isAIChatOpen = false;
                         // (zoom 100%). Zoom hanya mengubah tampilan, bukan posisi aslinya.
                         let dragPointerId = null, dragStartX = 0, dragStartY = 0;
                         let stampStartX = 0, stampStartY = 0;
+                        const pageScale = () => {
+                            const page = div.closest('.pdf-page-canvas-wrapper');
+                            return page && Number(page.dataset.baseWidth)
+                                ? page.getBoundingClientRect().width / Number(page.dataset.baseWidth)
+                                : reviewZoom;
+                        };
                         div.addEventListener('pointerdown', (e) => {
                             if (e.target === delBtn || e.target === rotBtn || e.target === resizeHandle) return;
                             if (e.button !== undefined && e.button !== 0) return;
@@ -4225,10 +4238,11 @@ let isAIChatOpen = false;
                         });
                         div.addEventListener('pointermove', (e) => {
                             if (dragPointerId !== e.pointerId) return;
-                            s.x = Math.max(0, stampStartX + (e.clientX - dragStartX) / reviewZoom);
-                            s.y = Math.max(0, stampStartY + (e.clientY - dragStartY) / reviewZoom);
-                            div.style.left = `${s.x * reviewZoom}px`;
-                            div.style.top = `${s.y * reviewZoom}px`;
+                            const scale = pageScale();
+                            s.x = Math.max(0, stampStartX + (e.clientX - dragStartX) / scale);
+                            s.y = Math.max(0, stampStartY + (e.clientY - dragStartY) / scale);
+                            div.style.left = `${s.x * scale}px`;
+                            div.style.top = `${s.y * scale}px`;
                         });
                         const endStampDrag = (e) => {
                             if (dragPointerId !== e.pointerId) return;
@@ -4250,10 +4264,11 @@ let isAIChatOpen = false;
                         });
                         resizeHandle.addEventListener('pointermove', (e) => {
                             if (resizePointerId !== e.pointerId) return;
-                            s.width = Math.max(30, initW + (e.clientX - initMouseX) / reviewZoom);
-                            s.height = Math.max(20, initH + (e.clientY - initMouseY) / reviewZoom);
-                            div.style.width = `${s.width * reviewZoom}px`;
-                            div.style.height = `${s.height * reviewZoom}px`;
+                            const scale = pageScale();
+                            s.width = Math.max(30, initW + (e.clientX - initMouseX) / scale);
+                            s.height = Math.max(20, initH + (e.clientY - initMouseY) / scale);
+                            div.style.width = `${s.width * scale}px`;
+                            div.style.height = `${s.height * scale}px`;
                         });
                         const endStampResize = (e) => {
                             if (resizePointerId !== e.pointerId) return;
@@ -5217,10 +5232,12 @@ async function compressAvatarImage(file) {
                 // Pertahankan titik PDF di bawah jari agar zoom terasa alami seperti pembaca PDF.
                 const currentAnchorX = currentMid.x - rect.left;
                 const currentAnchorY = currentMid.y - rect.top;
-                scroll.scrollLeft = (reviewPinchStartScrollLeft + reviewPinchAnchorX) *
+                const desiredLeft = (reviewPinchStartScrollLeft + reviewPinchAnchorX) *
                     (reviewZoom / reviewPinchStartZoom) - currentAnchorX;
-                scroll.scrollTop = (reviewPinchStartScrollTop + reviewPinchAnchorY) *
+                const desiredTop = (reviewPinchStartScrollTop + reviewPinchAnchorY) *
                     (reviewZoom / reviewPinchStartZoom) - currentAnchorY;
+                scroll.scrollLeft = Math.max(0, Math.min(desiredLeft, scroll.scrollWidth - scroll.clientWidth));
+                scroll.scrollTop = Math.max(0, Math.min(desiredTop, scroll.scrollHeight - scroll.clientHeight));
             }, { passive: false });
 
             const endPinch = (event) => {
